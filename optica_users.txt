@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Alice",
+    "eff": 0.85,
+    "dark_count_rate": 0
+  },
+  {
+    "name": "Bob",
+    "eff": 0.85,
+    "dark_count_rate": 0
+  },
+  {
+    "name": "Carol",
+    "eff": 0.2,
+    "dark_count_rate": 0
+  },
+  {
+    "name": "Dave",
+    "eff": 0.1,
+    "dark_count_rate": 0
+  }
+]
