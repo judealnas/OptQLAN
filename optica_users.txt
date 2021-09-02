@@ -1,22 +1,22 @@
 [
   {
     "name": "Alice",
-    "eff": 0.85,
+    "eff": 0.085,
     "dark_count_rate": 0
   },
   {
     "name": "Bob",
-    "eff": 0.85,
+    "eff": 0.085,
     "dark_count_rate": 0
   },
   {
     "name": "Carol",
-    "eff": 0.2,
+    "eff": 0.002,
     "dark_count_rate": 0
   },
   {
     "name": "Dave",
-    "eff": 0.1,
+    "eff": 0.001,
     "dark_count_rate": 0
   }
 ]
