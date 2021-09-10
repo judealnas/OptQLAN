@@ -1,30 +1,30 @@
 classdef QLAN < handle
     %QLAN Representation of flex-grid quantum LAN
-    %   Q = QLAN(FILEPATH) constructs a fully connected network using the
-    %   user properties contained in the JSON-encoded file FILEPATH
+    %   Q = QLAN(LINKS, FILEPATH) retrieves an array of users from the
+    %   JSON-encoded file FILEPATH. LINKS is an Lx2 numeric matrix where
+    %   each row contains the indices of users forming a network link.
     %
-    %   Q = QLAN(EFF_N, D_N) constructs a fully connected network using the
-    %   vectors of user efficiencies EFF_N and dark count rates D_N
+    %   Q = QLAN(LINKS, EFF_N, D_N) constructs the network using the
+    %   corresponding arrays of user efficiencies EFF_N and detector dark
+    %   count rates D_N.
     %
-    %   Q = QLAN(_,'UserNames', NAMES) associates names with users of the
-    %   network where NAMES is a string vector or cell vector of character
-    %   vectors corresponding with the order of specified users
+    %   Q = QLAN(_,'UserNames', UNAMES) associates names with users of the
+    %   network where NAMES is a string vector or cell array of character
+    %   vectors withe the same number of elements as users in the network,
+    %   i.e. size(EFF_N,1) == numel(UNAMES)
     %
-    %   Q = QLAN(_,'Links', LINKS) connects the users according to LINKS.
-    %   LINKS can be:
-    %       - An Lx2 matrix where rows specify the index of endpoint users
-    %       forming the link
-    %       - A table with the variable "EndNodes". Rows of this table are
-    %       the user indices or user names forming the link. The individual
-    %       links can be given labels by including in the table a cell
-    %       vector of char vectors with the variable name "EdgeNames".
-   
+    %   Q = QLAN(_,'LinkNames', LNAMES) associates names with the links of
+    %   network. LNAMES is a string vector or cell array of character
+    %   vectors with the same number of elements as links in the network,
+    %   i.e. size(LINKS,1) == numel(LNAMES)
+    
     
     properties
         alloc_vect; % Allocation vector
         g graph = graph(); % network graph object
         coinc_wind_s; % Coincidence window in seconds
         user_names; % network user labels
+        link_labels; % link names
         inc_mat; % Network incidence matrix in sparse format
         eff_N (:,1); % Col vector of user detector efficiencies
         d_N (:,1)
@@ -54,75 +54,95 @@ classdef QLAN < handle
         sigma_L; % link states after weighting and noise addition
         F_L; % Per link fidelities
         ebr_L; % Per link ebit rates
-
+        
     end
     
     methods
         function obj = QLAN(varargin)
             
             % Check if arg is string or character vector
-            string_or_char = @(x) isstring(x) || ischar(x);
+            istext = @(x) isstring(x) || ischar(x);
             
             % Check if arg is string or cell string array
-            cellstr_or_string = @(x) isstring(x) || iscellstr(x);
+            istextcolvector = @(x) size(x,2) == 1 && (isstring(x) || iscellstr(x));
             
             % Check if arg is numeric vector
-            num_vect = @(x) isvector(x) && isnumeric(x);
-            
-            % Check if argument is Nx2 matrix or table with the variable
-            % 'EndNodes'
-            mat_or_table = @(x) size(x,2) == 2 ||...
-                (istable(x) && any(ismember(x.Properties.VariableNames,{'EndNodes'})));
+            isnumcolvector = @(x) size(x,2) == 1 && isnumeric(x) ;
             
             p = inputParser;
-            p.addRequired('file_eff', @(x) string_or_char(x) || num_vect(x));
-            p.addOptional('d_N', [], num_vect);
-            p.addParameter('UserNames',[], cellstr_or_string);
-            p.addParameter('Links',[], mat_or_table);
+            p.addRequired('links', @(x) size(x,2) == 2 && isnumeric(x));
+            p.addRequired('file_eff', @(x) istext(x) || isnumcolvector(x));
+            p.addOptional('d_N', [], isnumcolvector);
+            p.addParameter('UserNames',[], istextcolvector);
+            p.addParameter('LinkNames',[], istextcolvector);
             
             p.parse(varargin{:});
-            file_eff = p.Results.file_eff;
+            links = p.Results.links;
+            eff_N = p.Results.file_eff;
             d_N = p.Results.d_N;
-            names = p.Results.UserNames;
-            links = p.Results.Links;
+            user_names = p.Results.UserNames;
+            link_names = p.Results.LinkNames;
             
-            % If string or char vect input, interpret as filepath and load
-            % users from file
-            if nargin == 1 && string_or_char(varargin{1})
-                [obj.user_names, obj.eff_N, obj.d_N] = ...
-                                            loadUsersFromFile(varargin{1});
-                                        
-            % Else if two numeric vetors passed, interpret as corresponding
-            % efficiency and dark count rate vectors
-            elseif nargin == 2 && num_vect(varargin{1}) && num_vect(varargin{2})
-                eff_N = varargin{1};
-                d_N = varargin{2};
-                if size(eff_N(:)) ~= size(d_N(:))
-                    error("Efficiency and dark count vectors must have same size")
-                end
+            % initialize empty graph
+            g = graph();
+            
+            % Getting users from file if necessary
+            if istext(eff_N)
+                [file_user_names, eff_N, d_N] = loadUsersFromFile(eff_N);
                 
-                obj.eff_N = eff_N;
-                obj.d_N = d_N;
+                % If no user names provided, use names from file
+                if isempty(user_names)
+                    user_names = file_user_names;
+                end
+            end
+            obj.eff_N = eff_N;
+            obj.d_N = d_N;
+            
+            N = size(eff_N,1);
+            default_user_names = arrayfun(@(x)sprintf('n%d',x), (1:N)',...
+                'UniformOutput', false);
+            if max(links, [], 'all') > N
+                error("LINKS specifies more users than available.")
             end
             
-            % Handling link parameter
-            links = p.Results.Links;
-            if ~isempty(links)
-                if isnumeric(links)
-                    obj.links = links;
-                    g = graph(links(:,1), links(:,2));
-                else % Else links is table with variable 'EndNodes'
-                    g = graph(links)
-                end
-                
-            else
-                links = nchoosek(1:obj.L, 2);
-                obj.links = links;
-                g = graph(links(:,1), links(:,2));
+            % If user_names empty, use default names 
+            if isempty(user_names)
+                user_names = default_user_names;
+            
+            % if insufficient names, pad using default names
+            elseif numel(user_names) < N
+                warning("Not enough node names provided. Padding with default names")
+                user_names = [cellstr(user_names) default_user_names(numel(user_names)+1:end)];
+            
+            % If excess names, ignore excess
+            elseif numel(user_names) > N
+                warning("Too many user names specified. Extra names ignored");
+                user_names = user_names(1:N);
             end
+            obj.user_names = user_names;
+%             % If link labels not provided, generate from user names
+%             if isempty(link_names)
+%                 link_names = generateLinkLabels(user_names, links);
+%             end
+            
+            % Constructing graph
+            g = g.addnode(user_names);
+            obj.configLinks(links, 'GenLabels', user_names);
+%             g = g.addedge(links(:,1), links(:,2));
+%             
+%             % Saving instance variables
+%             obj.g = g;
+%             obj.inc_mat = abs(incidence(obj.g));
+%             obj.links = links;
+%             obj.link_labels = link_names;
         end
         
         function obj = configChans(obj, chan_fluxes, U_K, rho_K)
+            %CONFIGCHANS(Q, chan_fluxes, U_K, rho_K) configures the
+            %following QLAN properties:
+            %   chan_fluxes - channel biphoton flux
+            %   U_K - (:,:,K) matrix of channel unitaries
+            %   rho_K - (:,:,K) matrix of initial channel density matrices
             sz1 = [size(chan_fluxes,1), size(U_K,3), size(rho_K,3)];
             if any(sz1 ~= sz1(1))
                 error("Dimension Mismatch: Unequal channels")
@@ -137,15 +157,74 @@ classdef QLAN < handle
             obj.chan_fluxes = chan_fluxes;
         end
         
-        function obj = createLinks(links, labels)
-            obj.links = links;
-            obj.L = size(links,2);
-            obj.g = graph(links(:,1),links(:,2));
-            obj.inc_mat = abs(incidence(obj.g));
+        function obj = configLinks(obj, links, varargin)
+            %CONFIGLINKS re-connects users in a QLAN to form an entanglement
+            %   network. 
+            %
+            %   configLinks(QLAN, LINKS) - connects users in the
+            %   QLAN object according to the Lx2 numeric matrix LINKS. Each
+            %   row of LINKS contains the indices of users forming the link
+            %   endpoints.
+            %   
+            %   configLinks(QLAN, LINKS, LABELS) uses the string vector or
+            %   cell vector of char vectors LABELS as link labels for
+            %   plotting
+            %
+            %   configLinks(QLAN, LINKS, 'GenLabels', USERNAMES) generates
+            %   link labels using the matrix LINKS and the string vector or
+            %   cell vector of char vectors USERNAMES
+                        
+            % Check if arg is string or cell string array
+            istextcolvector = @(x) size(x,2) == 1 && (isstring(x) || iscellstr(x));
             
-            if nargin > 1
-                obj.g.Edges = [obj.g.Edges table(labels, 'VariableNames', {'EdgeNames'})];
-            end    
+            p = inputParser;
+            p.FunctionName = 'configLinks';
+            p.addRequired('obj', @(x) isa(x,'QLAN'));
+            p.addRequired('links', @(x) size(x,2) == 2 && ...
+                                   isnumeric(x) && ...
+                                   max(x,[],'all') <= obj.N);
+            p.addOptional('labels',[], istextcolvector);
+            p.addParameter('GenLabels', [], istextcolvector);
+            
+            p.parse(obj,links,varargin{:});
+            obj = p.Results.obj;
+            links = p.Results.links;
+            labels = p.Results.labels;
+            user_names = p.Results.GenLabels;
+            
+            n = size(links,1); 
+            
+            % Generating default link labels
+            if isempty(user_names)
+                default_labels = arrayfun(@(x)sprintf('l%d',x), (1:n)',...
+                    'UniformOutput', false);
+            else
+                default_labels = generateLinkLabels(user_names, links);
+            end
+            
+            if ~isempty(labels)
+                if numel(labels) < n 
+                    warning("Insufficient link labels provided");
+                    labels = [cellstr(labels)
+                              default_labels(numel(labels)+1:end)];
+                elseif numel(labels) > n
+                    warning("Excess link labels ignored")
+                    labels = labels(1:n);
+                end
+            else
+                labels = default_labels;
+            end
+            
+            edgetable = table(links, labels,...
+                'VariableNames', {'EndNodes', 'EdgeNames'});
+            
+            obj.g = obj.g.rmedge(1:size(obj.g.Edges,1)); % delete all edges
+            obj.g = obj.g.addedge(edgetable);
+            
+            obj.inc_mat = abs(incidence(obj.g));
+            obj.links = links;
+            obj.link_labels = labels;
+            obj.links = links;
         end
         
         %%Dependent property accessors %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -179,6 +258,7 @@ classdef QLAN < handle
         
         function user_fluxes = calcUserFluxes(obj)
             user_fluxes = full(obj.inc_mat)*obj.link_fluxes(2:end);
+            obj.user_fluxes = user_fluxes;
         end
         
         function R_N = calcUserSingleRate(obj)
@@ -219,7 +299,7 @@ classdef QLAN < handle
                 rho = obj.rho_K(:,:,alloc); % initial states of channels allocated to link i-1
                 chan_flux = obj.chan_fluxes(alloc); % get channel fluxes allocated to link i-1
                 chan_flux = reshape(chan_flux,1,1,numel(chan_flux)); % reshape to 3D vector for quicker math
-    
+                
                 % calculate sum of all chan_flux*U*rho*U' density matrices
                 % associated with link and normalize by total link flux
                 rho_L(:,:,i-1) = sum(pagemtimes(chan_flux,pagemtimes(pagemtimes(U,rho),'none',U,'ctranspose')),3);
@@ -237,12 +317,12 @@ classdef QLAN < handle
             lambda_L_3D = reshape(obj.lambda_L, 1, 1, obj.L);
             
             sigma_L = pagemtimes(lambda_L_3D, obj.rho_L)...
-                      + pagemtimes(1-lambda_L_3D, noise);
+                + pagemtimes(1-lambda_L_3D, noise);
             obj.sigma_L = sigma_L;
         end
-           
+        
         function F_L = calcFidelity(obj, psi)
-            if size(psi_L) ~= size(obj.sigma_L, [1 2])
+            if size(psi) ~= size(obj.sigma_L, [1 2])
                 error("Reference density matrix psi must have same dimensions as 1st two dims of sigma_L to calculate link fidelities")
             end
             
@@ -259,11 +339,12 @@ classdef QLAN < handle
                 logneg_L(i) = logneg(obj.sigma_L(:,:,i));
             end
             
-            obj.ebr_L = (obj.C_L + obj.A_L).*logneg_L;
+            ebr_L = (obj.C_L + obj.A_L).*logneg_L;
+            obj.ebr_L = ebr_L;
         end
         
         
-        function x = evalAlloc(obj, alloc_vect)
+        function x = evalAlloc(obj, alloc_vect, ref_rho)
             obj.alloc_vect = alloc_vect;
             obj.alloc_mat = logical((0:obj.L)' == alloc_vect(:)');
             obj.calcLinkFluxes();
@@ -274,7 +355,11 @@ classdef QLAN < handle
             obj.calcStateWeights();
             obj.calcLinkStates();
             obj.calcMixedLinkStates();
-            x = [obj.calcFidelity() obj.calcEbitRates()];
+            x = [obj.calcFidelity(ref_rho) obj.calcEbitRates()];
+        end
+        
+        function plotGraph(obj)
+            plot(obj.g, 'EdgeLabel', obj.g.Edges.EdgeNames)
         end
     end
 end
