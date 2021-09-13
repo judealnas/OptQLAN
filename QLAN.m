@@ -22,15 +22,15 @@ classdef QLAN < handle
     properties
         alloc_vect; % Allocation vector
         g graph = graph(); % network graph object
-        coinc_wind_s; % Coincidence window in seconds
-        user_names; % network user labels
-        link_labels; % link names
-        inc_mat; % Network incidence matrix in sparse format
+        coinc_wind_s (1,1) double = 0; % Coincidence window in seconds
+        user_names (:,1); % network user labels
+        link_labels (:,1); % link names
+        inc_mat (:,:); % Network incidence matrix in sparse format
         eff_N (:,1); % Col vector of user detector efficiencies
-        d_N (:,1)
-        U_K  % DxDxK matrix of channel unitaries
-        rho_K % DxDxK matrix of initial channel states
-        chan_fluxes;
+        d_N (:,1);
+        U_K; % DxDxK matrix of channel unitaries
+        rho_K; % DxDxK matrix of initial channel states
+        chan_fluxes (:,1);
     end
     
     % Quanitites derived from other properties' set methods
@@ -42,7 +42,7 @@ classdef QLAN < handle
     % Calculated quantities
     properties (SetAccess=protected)
         links (:,2) {};
-        user_file; % Filepath from which users were imported
+        user_file (1,:) char = ''; % File from which users were imported
         alloc_mat; % matrix expansion of allocation vector
         link_fluxes; % (L+1)x1 vector of link biphoton fluxes
         user_fluxes; % Nx1 vector of user single photon fluxes
@@ -58,6 +58,7 @@ classdef QLAN < handle
     end
     
     methods
+        %% Configuration Methods
         function obj = QLAN(varargin)
             
             % Check if arg is string or character vector
@@ -234,9 +235,9 @@ classdef QLAN < handle
         function l = get.L(obj)
             l = size(obj.g.Edges,1);
         end
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         
-        %%User File loading/saving%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        
+        %% User File Loading/Saving methods
         function obj = saveUsersToFile(obj, filename)
             saveUsersToFile(filename, obj.eff_N, obj.d_N, obj.user_names);
         end
@@ -244,8 +245,8 @@ classdef QLAN < handle
         function obj = loadUsersFromFile(obj, filename)
             [obj.user_names, obj.eff_N, obj.d_N] = loadUsersFromFile(filename);
         end
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         
+        %% Metric Calculation Methods
         function link_fluxes = calcLinkFluxes(obj)
             link_fluxes = obj.alloc_mat*obj.chan_fluxes;
             obj.link_fluxes = link_fluxes;
@@ -356,7 +357,6 @@ classdef QLAN < handle
             obj.ebr_L = ebr_L;
         end
         
-        
         function x = evalAlloc(obj, alloc_vect, ref_rho)
             %EVALALLOC returns QLAN performance metrics given a spectrum
             %allocation
@@ -396,6 +396,7 @@ classdef QLAN < handle
             x = [obj.calcFidelity(ref_rho) obj.calcEbitRates()];
         end
         
+        %% Plotting/Display Methods
         function plotGraph(obj)
             plot(obj.g, 'EdgeLabel', obj.g.Edges.EdgeNames)
         end
