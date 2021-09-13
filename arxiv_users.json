@@ -1,0 +1,17 @@
+[
+  {
+    "name": "Alice",
+    "eff": 0.015667510701081484,
+    "dark_count_rate": 0
+  },
+  {
+    "name": "Bob",
+    "eff": 0.00094406087628592353,
+    "dark_count_rate": 0
+  },
+  {
+    "name": "Charlie",
+    "eff": 0.0074989420933245579,
+    "dark_count_rate": 0
+  }
+]
