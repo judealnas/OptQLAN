@@ -119,22 +119,17 @@ classdef QLAN < handle
                 warning("Too many user names specified. Extra names ignored");
                 user_names = user_names(1:N);
             end
-            obj.user_names = user_names;
-%             % If link labels not provided, generate from user names
-%             if isempty(link_names)
-%                 link_names = generateLinkLabels(user_names, links);
-%             end
+            obj.user_names = user_names; % Saving user names 
             
-            % Constructing graph
+            % Adding nodes to empty graph
             g = g.addnode(user_names);
-            obj.configLinks(links, 'GenLabels', user_names);
-%             g = g.addedge(links(:,1), links(:,2));
-%             
-%             % Saving instance variables
-%             obj.g = g;
-%             obj.inc_mat = abs(incidence(obj.g));
-%             obj.links = links;
-%             obj.link_labels = link_names;
+            
+            % If no link names provided, use user names to generate names
+            if isempty(link_names)
+                obj.configLinks(links, 'GenLabels', user_names);
+            else
+                obj.configLinks(links, link_names);
+            end
         end
         
         function obj = configChans(obj, chan_fluxes, U_K, rho_K)
@@ -325,10 +320,28 @@ classdef QLAN < handle
             if size(psi) ~= size(obj.sigma_L, [1 2])
                 error("Reference density matrix psi must have same dimensions as 1st two dims of sigma_L to calculate link fidelities")
             end
+            valid_psi = @(x) size(psi,3) == 1 || ...
+                             size(psi,3) == obj.L &&...
+                             size(psi, [1 2]) == size(obj.sigma_L, [1 2]);
+                         
+            p = inputParser;
+            p.addRequired('obj', @(x) isa(x, 'QLAN'));
+            p.addRequired('psi', valid_psi);
             
+            p.parse(obj, psi);
+            obj = p.Results.obj;
+            psi = p.Results.psi;
+            
+            b_3D_psi = size(psi, 3) > 1; % true if more than one ref state provided
+            j = 1; % iterator for psi matrices
             F_L = zeros(obj.L,1);
             for i = 1:obj.L
-                F_L(i) = fidelity(obj.sigma_L(:,:,i), psi);
+                F_L(i) = fidelity(obj.sigma_L(:,:,i), psi(:,:,j));
+                
+                % increment j if psi has multiple ref states
+                if b_3D_psi
+                    j = j + 1; 
+                end
             end
             obj.F_L = F_L;
         end
@@ -345,6 +358,31 @@ classdef QLAN < handle
         
         
         function x = evalAlloc(obj, alloc_vect, ref_rho)
+            %EVALALLOC returns QLAN performance metrics given a spectrum
+            %allocation
+            %
+            %   [FID, EBR] = evalAlloc(QLAN, ALLOC_VECT, RHO) returns the
+            %   link state fidelities FID with respect to state RHO as well
+            %   as the link entangled bit rates EBR given a spectrum
+            %   allocation ALLOC_VECT. RHO must have the same dimensions as
+            %   the channel unitaries U_k and initial channel states rho_k.
+            %   ALLOC_VECT is a Kx1 vector of link indices l where K is the
+            %   number of channel pairs and 0 <= l <= L, the number of 
+            %   links.
+            
+            valid_alloc = @(x) isvector(x) && size(x(:),1) == obj.K && ...
+                max(alloc_vect) <= obj.L && min(alloc_vect) >= 0;
+            
+            p = inputParser;
+            p.addRequired('obj', @(x) isa(x,'QLAN'));
+            p.addRequired('alloc_vect', valid_alloc);
+            p.addRequired('ref_rho', @(x) all(size(ref_rho) == size(obj.U_K, [1 2])));
+            
+            p.parse(obj, alloc_vect, ref_rho)
+            obj = p.Results.obj;
+            alloc_vect = p.Results.alloc_vect;
+            ref_rho = p.Results.ref_rho;
+            
             obj.alloc_vect = alloc_vect;
             obj.alloc_mat = logical((0:obj.L)' == alloc_vect(:)');
             obj.calcLinkFluxes();
