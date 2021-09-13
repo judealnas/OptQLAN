@@ -223,7 +223,28 @@ classdef QLAN < handle
             obj.links = links;
         end
         
-        %%Dependent property accessors %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        function tf = isConfiged(obj)
+            %ISCONFIGED checks if the necessary QLAN parameters have been
+            %set in order to calculate network metrics.
+            %
+            %   tf = isConfiged(QLAN) returns true if the following
+            %   parameters meet the corresponding conditions:
+            %       - 
+            
+            persistent cfg_msgs;
+            
+            tf_arr = [obj.coinc_wind_s > 0
+            ~isempty(obj.U_K)
+            ~isempty(obj.rho_K)
+            ~isempty(obj.chan_fluxes)
+            ~isequal(obj.g, graph())
+            ~isempty(obj.eff_N)
+            ~isempty(obj.d_N)];
+            
+            tf = ~any(tf_arr);
+        end
+        
+        %% Dependent property accessors
         function k = get.K(obj)
             k = numel(obj.chan_fluxes);
         end
