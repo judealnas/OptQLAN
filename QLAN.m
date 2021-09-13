@@ -79,7 +79,7 @@ classdef QLAN < handle
             
             p.parse(varargin{:});
             links = p.Results.links;
-            eff_N = p.Results.file_eff;
+            file_eff = p.Results.file_eff;
             d_N = p.Results.d_N;
             user_names = p.Results.UserNames;
             link_names = p.Results.LinkNames;
@@ -87,23 +87,43 @@ classdef QLAN < handle
             % initialize empty graph
             g = graph();
             
-            % Getting users from file if necessary
-            if istext(eff_N)
-                [file_user_names, eff_N, d_N] = loadUsersFromFile(eff_N);
+            % Getting users from file file_eff arg is text
+            if istext(file_eff)
+                filename = file_eff;
+                [file_user_names, eff_N, d_N] = loadUsersFromFile(filename);
                 
                 % If no user names provided, use names from file
                 if isempty(user_names)
                     user_names = file_user_names;
                 end
+                
+            % Otherwise file_eff is numeric vector of efficiencies
+            else
+                filename = '';
+                eff_N = file_eff;
             end
+            
+            % Save user file, efficiencies, and dark cnts vales
+            obj.user_file = filename;
             obj.eff_N = eff_N;
             obj.d_N = d_N;
             
+            % Get # of users
             N = size(eff_N,1);
+            
+            % Generae default user names
             default_user_names = arrayfun(@(x)sprintf('n%d',x), (1:N)',...
                 'UniformOutput', false);
+            
+            % If empty list provided for links, use fully connected net
+            if isempty(links)
+                links = nchoosek(1:N, 2);
+            end
+            
+            % Check if links include unspecified user
             if max(links, [], 'all') > N
-                error("LINKS specifies more users than available.")
+                error("File '%s' contains %d users but provided links assumes %d users.",...
+                    file)
             end
             
             % If user_names empty, use default names 
@@ -112,7 +132,9 @@ classdef QLAN < handle
             
             % if insufficient names, pad using default names
             elseif numel(user_names) < N
-                warning("Not enough node names provided. Padding with default names")
+                warning("%d node names provided when expecting %d. Padding with default names",...
+                    numel(user_names), N);
+                
                 user_names = [cellstr(user_names) default_user_names(numel(user_names)+1:end)];
             
             % If excess names, ignore excess
@@ -145,7 +167,7 @@ classdef QLAN < handle
             end
             
             if any(size(U_K, [1 2]) ~= size(rho_K, [1 2]))
-                error("Dimension Mismatch: unitaries and states of different sizes");
+                error("Dimension Mismatch: unitaries and states are incompatible sizes");
             end
             
             obj.U_K = U_K;
@@ -254,7 +276,7 @@ classdef QLAN < handle
         end
         
         function l = get.L(obj)
-            l = size(obj.g.Edges,1);
+            l = size(obj.links,1);
         end
         
         
@@ -420,6 +442,11 @@ classdef QLAN < handle
         %% Plotting/Display Methods
         function plotGraph(obj)
             plot(obj.g, 'EdgeLabel', obj.g.Edges.EdgeNames)
+        end
+        
+        function dispUsers(obj)
+            disp(table(obj.user_names, obj.eff_N*100, obj.d_N,...
+                'VariableNames', {'Name', 'Efficiency (%)', 'Dark Count Rate'}))
         end
     end
 end
