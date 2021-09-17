@@ -1,4 +1,4 @@
-classdef QLAN < handle
+classdef QLAN < handle & matlab.mixin.Copyable
     %QLAN Representation of flex-grid quantum LAN
     %   Q = QLAN(LINKS, FILEPATH) retrieves an array of users from the
     %   JSON-encoded file FILEPATH. LINKS is an Lx2 numeric matrix where
@@ -18,14 +18,14 @@ classdef QLAN < handle
     %   vectors with the same number of elements as links in the network,
     %   i.e. size(LINKS,1) == numel(LNAMES)
     
-    
+    %% Public Properties
     properties
-        alloc_vect; % Allocation vector
+        alloc_vect (:,1) uint8; % Allocation vector
         g graph = graph(); % network graph object
         coinc_wind_s (1,1) double = 0; % Coincidence window in seconds
         user_names (:,1); % network user labels
         link_labels (:,1); % link names
-        inc_mat (:,:); % Network incidence matrix in sparse format
+        inc_mat (:,:) logical; % Network incidence matrix in sparse format
         eff_N (:,1); % Col vector of user detector efficiencies
         d_N (:,1);
         U_K; % DxDxK matrix of channel unitaries
@@ -33,17 +33,20 @@ classdef QLAN < handle
         chan_fluxes (:,1);
     end
     
+    %% Dependent properties
     % Quanitites derived from other properties' set methods
     properties (Dependent=true)
         N; % # of users; calculated as size(eff_N,1);
         K; % # of channel pairs; size(chan_fluxes,1);
         L; % # of non-null network links; size(links,1);
     end
+    
+    %% Set-protected properties
     % Calculated quantities
-    properties (SetAccess=protected)
+    properties (SetAccess=public)
         links (:,2) {};
         user_file (1,:) char = ''; % File from which users were imported
-        alloc_mat; % matrix expansion of allocation vector
+        alloc_mat logical; % matrix expansion of allocation vector
         link_fluxes; % (L+1)x1 vector of link biphoton fluxes
         user_fluxes; % Nx1 vector of user single photon fluxes
         R_N; % Nx1 vector of single photon rates per detector per user
@@ -286,7 +289,7 @@ classdef QLAN < handle
             isnumcolvector = @(x) size(x,2) == 1 && isnumeric(x) ;
             
             p = inputParser;
-            p.addRequired('links', @(x) size(x,2) == 2 && isnumeric(x));
+            p.addRequired('links', @(x)isempty(x) || (size(x,2) == 2 && isnumeric(x)));
             p.addRequired('file_eff', @(x) istext(x) || isnumcolvector(x));
             p.addOptional('d_N', [], isnumcolvector);
             p.addParameter('UserNames',[], istextcolvector);
@@ -356,8 +359,9 @@ classdef QLAN < handle
             end
             obj.user_names = user_names; % Saving user names 
             
-            % Adding nodes to empty graph
-            g = g.addnode(user_names);
+            % Initializing graph with nodes
+            obj.g = graph();
+            obj.g = obj.g.addnode(user_names);
             
             % If no link names provided, use user names to generate names
             if isempty(link_names)
@@ -367,23 +371,23 @@ classdef QLAN < handle
             end
         end
         
-        function obj = configChans(obj, chan_fluxes, U_K, rho_K)
-            %CONFIGCHANS(Q, chan_fluxes, U_K, rho_K) configures the
-            %following QLAN properties:
+        function obj = configChans(obj, chan_fluxes, chan_unitry, chan_states)
+            %CONFIGCHANS(Q, chan_fluxes, chan_unitry, chan_states)
+            %configures the following QLAN properties:
             %   chan_fluxes - channel biphoton flux
-            %   U_K - (:,:,K) matrix of channel unitaries
-            %   rho_K - (:,:,K) matrix of initial channel density matrices
-            sz1 = [size(chan_fluxes,1), size(U_K,3), size(rho_K,3)];
+            %   chan_unitry - (:,:,K) matrix of channel unitaries
+            %   chan_states - (:,:,K) matrix of initial channel density matrices
+            sz1 = [size(chan_fluxes,1), size(chan_unitry,3), size(chan_states,3)];
             if any(sz1 ~= sz1(1))
                 error("Dimension Mismatch: Unequal channels")
             end
             
-            if any(size(U_K, [1 2]) ~= size(rho_K, [1 2]))
+            if any(size(chan_unitry, [1 2]) ~= size(chan_states, [1 2]))
                 error("Dimension Mismatch: unitaries and states are incompatible sizes");
             end
             
-            obj.U_K = U_K;
-            obj.rho_K = rho_K;
+            obj.U_K = chan_unitry;
+            obj.rho_K = chan_states;
             obj.chan_fluxes = chan_fluxes;
         end
         
@@ -420,16 +424,16 @@ classdef QLAN < handle
             obj = p.Results.obj;
             links = p.Results.links;
             labels = p.Results.labels;
-            user_names = p.Results.GenLabels;
+            unames = p.Results.GenLabels;
             
             n = size(links,1); 
             
             % Generating default link labels
-            if isempty(user_names)
+            if isempty(unames)
                 default_labels = arrayfun(@(x)sprintf('l%d',x), (1:n)',...
                     'UniformOutput', false);
             else
-                default_labels = generateLinkLabels(user_names, links);
+                default_labels = generateLinkLabels(unames, links);
             end
             
             if ~isempty(labels)
@@ -474,7 +478,7 @@ classdef QLAN < handle
             ~isempty(obj.eff_N)
             ~isempty(obj.d_N)];
             
-            tf = ~any(tf_arr);
+            tf = all(tf_arr);
         end
         
         %% Dependent property accessors
