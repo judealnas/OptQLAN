@@ -57,6 +57,221 @@ classdef QLAN < handle
         
     end
     
+    %% Static Methods
+    methods (Static=true)
+        function M = allocVect2Mat(V,L)
+            %ALLOCVECT2MAT converts an allocation vector to an allocation
+            %matrix
+            %
+            %   M = allocVect2Mat(V,L) converts allocation vector V to
+            %   allocation matrix M given L non-null links. Each row of M
+            %   corresponds to a link. Each column of M corresponds to a
+            %   channel pair. If M(l,k) == 1, then the kth channel is
+            %   allocated to the lth link, where the 0th link is the null
+            %   link.
+            
+            if ~(isvector(V) && all(mod(V,1) == 0, 'all'))
+                error("V must be a vector of integers >= 0") 
+            end
+            M = logical((0:L)' == V(:)');
+        end
+        
+        function link_fluxes = calcLinkFluxes_(alloc_mat, chan_fluxes)
+            %CALCLINKFLUXES_ is a static method that returns the flux per
+            %network link 
+            %   link_fluxes = calcLinkFluxes_(ALLOC_MAT, CHAN_FLUX) calculates
+            %   the flux through the links as the matrix multiplication of the
+            %   allocation  matrix and the channel pair flux vector:
+            %       link_fluxes = ALLOC_MAT * CHAN_FLUX
+            
+            link_fluxes = alloc_mat * chan_fluxes;
+        end
+        
+        function user_fluxes = calcUserFluxes_(incidence, link_fluxes)
+            %CALCUSERFLUXES_ is a static method for calculating flux
+            %received by each user in network
+            %
+            %   user_fluxes = calcUserFluxes_(INCID, LINK_FLUX) calculates
+            %   the flux received by network users via matrix
+            %   multiplication of the incidene matrix and link flux vector.
+            %       INCID - NxL incidence matrix
+            %       LINK_FLUX - (L+1)x1 vector of L non-null-link fluxes
+            %       and 1 null link flux at index 1
+            user_fluxes = incidence * link_fluxes(2:end);
+        end
+        
+        function R_N = calcUserSingleRate_(user_fluxes, eff_N, d_N)
+            %CALCUSERSINGLERATE_ is a static method calculating the single
+            %count rate at a user's detector
+            %
+            %   R_N = calcUserSingleRate_(USER_FLUX, EFF_N, D_N) returns
+            %   the single count rate given the user flux vector USER_FLUX,
+            %   user efficiency vector EFF_N, and user dark count rate
+            %   vector D_N. All arguments must have same number of
+            %   elements.
+            R_N = eff_N.*user_fluxes./2 + d_N;
+        end
+        
+        function A_L = calcLinkAccRate_(inc_mat, R_N, coinc_wind_s)
+            %CALCLINKACCRATE_ is a static method calculating the accidental
+            %coincidence rate of network links
+            %
+            %   A_L = calcLinkAccRate_(INCID, R_N, TAU) calculates the link
+            %   accidental rates A_L given:
+            %       INCID - NxL undirected incidence matrix
+            %       R_N - Nx1 vector of user single count rates
+            %       TAU - scalar double representing coincidence window in
+            %       seconds.
+            %       A_L - Lx1 vector of accidental coincidence rates for
+            %       each link
+            L = size(inc_mat,2);
+            A_L = zeros(L, 1);
+            full_inc_mat = logical(full(inc_mat));
+            for i = 1:L
+                A_L(i) = ...
+                    8*coinc_wind_s.*prod(R_N(full_inc_mat(:,i)));
+            end
+        end
+        
+        function C_L = calcLinkCorrRate_(inc_mat, link_fluxes, eff_N)
+            %CALCLINKCORRRATE_ is a static method calculating the true,
+            %correlated coincidence rate of each link in a network.
+            %
+            %   C_L = calcLinkCorrRate_(INCID, LINK_FLUX, EFF_N) returns
+            %   the link true coincidence rate vector C_L.
+            %       INCID - NxL undirected incidence matrix
+            %       LINK_FLUX - (L+1)x1 vector of L non-null-link fluxes
+            %                   and one null link flux at index 1
+            %       EFF_N - Nx1 vector of user detector efficiencies
+            %       C_L - Lx1 vector of true coincidence rates for each
+            %               link
+            L = size(inc_mat,2);
+            C_L = zeros(L, 1);
+            full_inc_mat = logical(full(inc_mat));
+            for i = 1:L
+                C_L(i) = ...
+                    link_fluxes(i+1)*prod(eff_N(full_inc_mat(:,i)));
+            end
+        end
+        
+        function lambda_L = calcStateWeights_(A_L, C_L)
+            %CALCSTATEWEIGHTS_ is a static method that calculates the
+            %relative weights between the maximally mixed state and true
+            %desired state per link
+            %
+            %   lambda_L = calcStateWeights_(A_L,C_L) calculates the weight
+            %   vector as 
+            %       lambda_L = 1 ./ (1 + A_L ./ C_L)
+            %   where A_L and C_L are the link accidental and true
+            %   coincidence rates respectively
+            lambda_L = 1./(1 + A_L ./ C_L);
+        end
+        
+        function rho_L = calcLinkStates_(alloc_mat, link_fluxes,...
+                                         chan_fluxes, U_K, rho_K)
+            %CALCLINKSTATES_ is a static method that calculates the state
+            %shared on a network link prior to the introduction of noise
+            %
+            %   rho_L calcLinkStates_(ALLOC_MAT, LINK_FLUX, CHAN_FLUX,
+            %                         U_K, RHO_K)
+            %       ALLOC_MAT - LxK allocation matrix
+            %       LINK_FLUX - (L+1)x1 vector of L non-null-link fluxes
+            %                   and one null link flux at index 1
+            %       CHAN_FLUX - Kx1 vector of channel pair fluxes
+            %       U_K       - DxDxK 3D matrix of channel unitaries
+            %       RHO_K     - DxDxK 3D matrix of initial channel states
+            %   The allocation matrix is used to deterine which channels
+            %   are allocated to a link. The unitaries U_k of those
+            %   channels are applied to their respective intial channel
+            %   states rho_k. These states are summed, weighting each
+            %   channel state by the channel's flux contribution to the
+            %   link flux.
+            %   
+            L = size(alloc_mat,1) - 1; % get number of non null links
+            rho_L = zeros([size(rho_K,[1 2]) L]);
+            for i = 2:(L+1) % iterate over non-null links
+                alloc_chans = logical(alloc_mat(i,:));
+                U = U_K(:,:,alloc_chans); % unitaries of channels allocated to link i-1
+                rho = rho_K(:,:,alloc_chans); % initial states of channels allocated to link i-1
+                chan_flux = chan_fluxes(alloc_chans); % get channel fluxes allocated to link i-1
+                chan_flux = reshape(chan_flux,1,1,numel(chan_flux)); % reshape to 3D vector for quicker math
+                
+                % Calculate sum of all chan_flux*U*rho*U' density matrices
+                % associated with link and normalize by total link flux
+                rho_L(:,:,i-1) = sum(pagemtimes(chan_flux,pagemtimes(pagemtimes(U,rho),'none',U,'ctranspose')),3);
+                rho_L(:,:,i-1) = rho_L(:,:,i-1)./link_fluxes(i);
+            end
+        end
+        
+        function sigma_L = calcNoisyLinkStates_(rho_L, noise_L, lambda_L)
+            %CALCNOISYLINKSTATES is a static method that calculates the
+            %link states after inclusion of noise.
+            %
+            %   sigma_L = calcNoisyLinkStates_(RHO, NOISE, LAMBDA) returns
+            %   the sum of the corresponding RHO's and NOISE's weighted by
+            %   the corresponding LAMBDA and 1-LAMBDA respectively
+            %       RHO - DxDxL 3D matrix of link states
+            %       NOISE - DxDxL 3D matrix of noise states
+            %       LAMBDA - Lx1 vector of weights
+            %       sigma_L - DxDxL 3D matrix of noisy link states
+            %           sigma_L(:,:,l) = 
+            %               lambda_L(l)*rho_L(:,:,l) +
+            %               (1-lambda_L(l))*noise_L(:,:,l)
+            lambda_L = reshape(lambda_L, 1,1, numel(lambda_L));
+            sigma_L = pagemtimes(lambda_L, rho_L) + ...
+                      pagemtimes(1-lambda_L, noise_L);
+            sigma_L(isnan(sigma_L)) = 0;
+        
+        end
+        
+        function F_L = calcFidelity_(rho_L, psi_L)
+            %CALCFIDELITY_ is a static method that calculates the
+            %fidelities between pages of provided states
+            %
+            %   F_L = calcFidelity_(RHO, PSI) returns a vector of
+            %   fidelities between the corresponding matrices of the 3D
+            %   matrices RHO and PSI. RHO and PSI must have the same size
+            %   third dimension (i.e. same number of pages) 
+            %       RHO - 3D matrix of L pages of matrices
+            %       PSI - 3D matrix of L pages of matrices
+            %       F_L - Lx1 vector of fidelities between corresponding
+            %             RHO's and PSI's
+            if size(rho_L,3) ~= size(psi_L,3)
+                error("3rd dimension of args must be equal")
+            end
+            
+            L = size(rho_L,3);
+            
+            F_L = zeros(L, 1);
+            for i = 1:L
+                F_L(i) = fidelity(rho_L(:,:,i), psi_L(:,:,i));
+            end
+        end
+        
+        function ebr_L = calcEbitRate_(A_L, C_L, sigma_L)
+            %CALCEBITRATE_ is a static method that calculates the entangled
+            %bit rate over a network link
+            %   
+            %   ebr_L = calcEbitRate_(A_L, C_L, SIGMA_L) calculates the
+            %   link entangled bit rate using the link coincidence rates
+            %   A_L, C_L and the log negativity of the noisy link states
+            %   SIGMA_L
+            %       A_L - Lx1 vector of link accidental coincidence rates
+            %       C_L - Lx1 vector of link truue coincidence rates
+            %       SIGMA_L = DxDxL 3D matrix of noisy link states used for
+            %       log negativity calculation
+                    
+            L = size(sigma_L,3);
+            ebr_L = zeros(L,1);
+            for i = 1:L
+                ebr_L(i) = logneg(sigma_L(:,:,i));
+            end
+            
+            ebr_L = (A_L + C_L).*ebr_L;
+        end
+    end
+    
+    %% Instance Methods
     methods
         %% Configuration Methods
         function obj = QLAN(varargin)
@@ -83,10 +298,7 @@ classdef QLAN < handle
             d_N = p.Results.d_N;
             user_names = p.Results.UserNames;
             link_names = p.Results.LinkNames;
-            
-            % initialize empty graph
-            g = graph();
-            
+                       
             % Getting users from file file_eff arg is text
             if istext(file_eff)
                 filename = file_eff;
@@ -242,7 +454,6 @@ classdef QLAN < handle
             obj.inc_mat = abs(incidence(obj.g));
             obj.links = links;
             obj.link_labels = labels;
-            obj.links = links;
         end
         
         function tf = isConfiged(obj)
@@ -278,8 +489,7 @@ classdef QLAN < handle
         function l = get.L(obj)
             l = size(obj.links,1);
         end
-        
-        
+
         %% User File Loading/Saving methods
         function obj = saveUsersToFile(obj, filename)
             saveUsersToFile(filename, obj.eff_N, obj.d_N, obj.user_names);
@@ -291,102 +501,52 @@ classdef QLAN < handle
         
         %% Metric Calculation Methods
         function link_fluxes = calcLinkFluxes(obj)
-            link_fluxes = obj.alloc_mat*obj.chan_fluxes;
+            link_fluxes = obj.calcLinkFluxes_(obj.alloc_mat, obj.chan_fluxes);
             obj.link_fluxes = link_fluxes;
         end
         
         function user_fluxes = calcUserFluxes(obj)
-            user_fluxes = full(obj.inc_mat)*obj.link_fluxes(2:end);
+            user_fluxes = obj.calcUserFluxes_(full(obj.inc_mat),obj.link_fluxes);
             obj.user_fluxes = user_fluxes;
         end
         
         function R_N = calcUserSingleRate(obj)
-            R_N = obj.eff_N./2.*obj.user_fluxes + obj.d_N;
+            R_N = obj.calcUserSingleRate_(obj.user_fluxes, obj.eff_N, obj.d_N);
             obj.R_N = R_N;
         end
         
         function A_L = calcLinkAccRate(obj)
-            A_L = zeros(obj.L, 1);
-            full_inc_mat = logical(full(obj.inc_mat));
-            for i = 1:obj.L
-                A_L(i) = ...
-                    8*obj.coinc_wind_s.*prod(obj.R_N(full_inc_mat(:,i)));
-            end
+            A_L = obj.calcLinkAccRate_(full(obj.inc_mat), obj.R_N, obj.coinc_wind_s); 
             obj.A_L = A_L;
         end
         
         function C_L = calcLinkCorrRate(obj)
-            C_L = zeros(obj.L, 1);
-            full_inc_mat = logical(full(obj.inc_mat));
-            for i = 1:obj.L
-                C_L(i) = ...
-                    obj.link_fluxes(i+1)*prod(obj.eff_N(full_inc_mat(:,i)));
-            end
+            C_L = obj.calcLinkCorrRate_(obj.inc_mat, obj.link_fluxes, obj.eff_N);
             obj.C_L = C_L;
         end
         
         function lambda_L = calcStateWeights(obj)
-            lambda_L = 1./(1 + obj.A_L./obj.C_L);
+            lambda_L = obj.calcStateWeights_(obj.A_L, obj.C_L);
             obj.lambda_L = lambda_L;
         end
         
         function rho_L = calcLinkStates(obj)
-            rho_L = zeros([size(obj.rho_K,[1 2]) obj.L]);
-            for i = 2:(obj.L+1) % iterate over non-null links
-                alloc = obj.alloc_mat(i,:);
-                U = obj.U_K(:,:,alloc); % unitaries of channels allocated to link i-1
-                rho = obj.rho_K(:,:,alloc); % initial states of channels allocated to link i-1
-                chan_flux = obj.chan_fluxes(alloc); % get channel fluxes allocated to link i-1
-                chan_flux = reshape(chan_flux,1,1,numel(chan_flux)); % reshape to 3D vector for quicker math
-                
-                % calculate sum of all chan_flux*U*rho*U' density matrices
-                % associated with link and normalize by total link flux
-                rho_L(:,:,i-1) = sum(pagemtimes(chan_flux,pagemtimes(pagemtimes(U,rho),'none',U,'ctranspose')),3);
-                rho_L(:,:,i-1) = rho_L(:,:,i-1)./obj.link_fluxes(i);
-            end
-            
+            rho_L = obj.calcLinkStates_(obj.alloc_mat, obj.link_fluxes,...
+                                       obj.chan_fluxes, obj.U_K, obj.rho_K);
             obj.rho_L = rho_L;
         end
         
-        function sigma_L = calcMixedLinkStates(obj)
+        function sigma_L = calcNoisyLinkStates(obj)
             D = size(obj.rho_L,1);
             n = size(obj.rho_L,3);
-            noise = repmat(eye(D)./D, 1,1,n);
+            noise_L = repmat(eye(D)./D, 1,1,n);
             
-            lambda_L_3D = reshape(obj.lambda_L, 1, 1, obj.L);
-            
-            sigma_L = pagemtimes(lambda_L_3D, obj.rho_L)...
-                + pagemtimes(1-lambda_L_3D, noise);
+            sigma_L = obj.calcNoisyLinkStates_(obj.rho_L, noise_L, obj.lambda_L);
             obj.sigma_L = sigma_L;
         end
         
         function F_L = calcFidelity(obj, psi)
-            if size(psi) ~= size(obj.sigma_L, [1 2])
-                error("Reference density matrix psi must have same dimensions as 1st two dims of sigma_L to calculate link fidelities")
-            end
-            valid_psi = @(x) size(psi,3) == 1 || ...
-                             size(psi,3) == obj.L &&...
-                             size(psi, [1 2]) == size(obj.sigma_L, [1 2]);
-                         
-            p = inputParser;
-            p.addRequired('obj', @(x) isa(x, 'QLAN'));
-            p.addRequired('psi', valid_psi);
-            
-            p.parse(obj, psi);
-            obj = p.Results.obj;
-            psi = p.Results.psi;
-            
-            b_3D_psi = size(psi, 3) > 1; % true if more than one ref state provided
-            j = 1; % iterator for psi matrices
-            F_L = zeros(obj.L,1);
-            for i = 1:obj.L
-                F_L(i) = fidelity(obj.sigma_L(:,:,i), psi(:,:,j));
-                
-                % increment j if psi has multiple ref states
-                if b_3D_psi
-                    j = j + 1; 
-                end
-            end
+            F_L = obj.calcFidelity_(obj.sigma_L, psi);
             obj.F_L = F_L;
         end
         
@@ -396,7 +556,7 @@ classdef QLAN < handle
                 logneg_L(i) = logneg(obj.sigma_L(:,:,i));
             end
             
-            ebr_L = (obj.C_L + obj.A_L).*logneg_L;
+            ebr_L = obj.calcEbitRate_(obj.A_L, obj.C_L, obj.sigma_L);
             obj.ebr_L = ebr_L;
         end
         
@@ -413,7 +573,7 @@ classdef QLAN < handle
             %   number of channel pairs and 0 <= l <= L, the number of 
             %   links.
             
-            valid_alloc = @(x) isvector(x) && size(x(:),1) == obj.K && ...
+            valid_alloc = @(x) isequal(size(x(:)), [obj.K 1]) && ...
                 max(alloc_vect) <= obj.L && min(alloc_vect) >= 0;
             
             p = inputParser;
@@ -423,20 +583,24 @@ classdef QLAN < handle
             
             p.parse(obj, alloc_vect, ref_rho)
             obj = p.Results.obj;
-            alloc_vect = p.Results.alloc_vect;
+            alloc_vect = p.Results.alloc_vect(:);
             ref_rho = p.Results.ref_rho;
             
             obj.alloc_vect = alloc_vect;
-            obj.alloc_mat = logical((0:obj.L)' == alloc_vect(:)');
-            obj.calcLinkFluxes();
-            obj.calcUserFluxes();
-            obj.calcUserSingleRate();
-            obj.calcLinkAccRate();
-            obj.calcLinkCorrRate();
-            obj.calcStateWeights();
-            obj.calcLinkStates();
-            obj.calcMixedLinkStates();
-            x = [obj.calcFidelity(ref_rho) obj.calcEbitRates()];
+            obj.alloc_mat = QLAN.allocVect2Mat(alloc_vect, obj.L);
+            obj.link_fluxes = obj.calcLinkFluxes();
+            obj.user_fluxes = obj.calcUserFluxes();
+            obj.R_N = obj.calcUserSingleRate();
+            obj.A_L = obj.calcLinkAccRate();
+            obj.C_L = obj.calcLinkCorrRate();
+            obj.lambda_L = obj.calcStateWeights();
+            obj.rho_L = obj.calcLinkStates();
+            obj.sigma_L = obj.calcNoisyLinkStates();
+            
+            ref_rho = repmat(ref_rho,1,1,obj.L);
+            obj.F_L = obj.calcFidelity(ref_rho);
+            obj.ebr_L = obj.calcEbitRates();
+            x = [obj.F_L(:), obj.ebr_L(:)];
         end
         
         %% Plotting/Display Methods
@@ -450,4 +614,3 @@ classdef QLAN < handle
         end
     end
 end
-
