@@ -21,7 +21,6 @@ classdef QLAN < handle & matlab.mixin.Copyable
     %% Public Properties
     properties
         alloc_vect (:,1) uint8; % Allocation vector
-        g graph = graph(); % network graph object
         coinc_wind_s (1,1) double = 0; % Coincidence window in seconds
         user_names (:,1); % network user labels
         link_labels (:,1); % link names
@@ -359,10 +358,6 @@ classdef QLAN < handle & matlab.mixin.Copyable
             end
             obj.user_names = user_names; % Saving user names 
             
-            % Initializing graph with nodes
-            obj.g = graph();
-            obj.g = obj.g.addnode(user_names);
-            
             % If no link names provided, use user names to generate names
             if isempty(link_names)
                 obj.configLinks(links, 'GenLabels', user_names);
@@ -449,13 +444,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
                 labels = default_labels;
             end
             
-            edgetable = table(links, labels,...
-                'VariableNames', {'EndNodes', 'EdgeNames'});
-            
-            obj.g = obj.g.rmedge(1:size(obj.g.Edges,1)); % delete all edges
-            obj.g = obj.g.addedge(edgetable);
-            
-            obj.inc_mat = abs(incidence(obj.g));
+            obj.inc_mat = linksToIncidence(links);
             obj.links = links;
             obj.link_labels = labels;
         end
@@ -609,7 +598,12 @@ classdef QLAN < handle & matlab.mixin.Copyable
         
         %% Plotting/Display Methods
         function plotGraph(obj)
-            plot(obj.g, 'EdgeLabel', obj.g.Edges.EdgeNames)
+            g = graph();
+            edgetable = table(obj.links, obj.link_labels,...
+                              'VariableNames', {'EndNodes', 'EdgeNames'});
+            nodetable = table(obj.user_names, 'VariableNames', {'Name'});
+            g = graph(edgetable, nodetable);
+            plot(g, 'EdgeLabel', g.Edges.EdgeNames)
         end
         
         function dispUsers(obj)
