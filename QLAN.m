@@ -281,25 +281,25 @@ classdef QLAN < handle & matlab.mixin.Copyable
             % Check if arg is string or character vector
             istext = @(x) isstring(x) || ischar(x);
             
-            % Check if arg is string or cell string array
-            istextcolvector = @(x) size(x,2) == 1 && (isstring(x) || iscellstr(x));
+            % Check if arg is string vect or cell string array
+            istextvector = @(x) isvector(x) && (isstring(x) || iscellstr(x));
             
             % Check if arg is numeric vector
-            isnumcolvector = @(x) size(x,2) == 1 && isnumeric(x) ;
+            isnumcvector = @(x)isvector(x) && isnumeric(x) ;
             
             p = inputParser;
             p.addRequired('links', @(x)isempty(x) || (size(x,2) == 2 && isnumeric(x)));
-            p.addRequired('file_eff', @(x) istext(x) || isnumcolvector(x));
-            p.addOptional('d_N', [], isnumcolvector);
-            p.addParameter('UserNames',[], istextcolvector);
-            p.addParameter('LinkNames',[], istextcolvector);
+            p.addRequired('file_eff', @(x) istext(x) || isnumcvector(x));
+            p.addOptional('d_N', [], isnumcvector);
+            p.addParameter('UserNames',[], istextvector);
+            p.addParameter('LinkNames',[], istextvector);
             
             p.parse(varargin{:});
             links = p.Results.links;
             file_eff = p.Results.file_eff;
             d_N = p.Results.d_N;
-            user_names = p.Results.UserNames;
-            link_names = p.Results.LinkNames;
+            user_names = p.Results.UserNames(:);
+            link_names = p.Results.LinkNames(:);
                        
             % Getting users from file file_eff arg is text
             if istext(file_eff)
@@ -314,7 +314,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
             % Otherwise file_eff is numeric vector of efficiencies
             else
                 filename = '';
-                eff_N = file_eff;
+                eff_N = file_eff(:);
             end
             
             % Save user file, efficiencies, and dark cnts vales
@@ -337,7 +337,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
             % Check if links include unspecified user
             if max(links, [], 'all') > N
                 error("File '%s' contains %d users but provided links assumes %d users.",...
-                    file)
+                    file_eff, N, max(links, [], 'all'))
             end
             
             % If user_names empty, use default names 
@@ -349,7 +349,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
                 warning("%d node names provided when expecting %d. Padding with default names",...
                     numel(user_names), N);
                 
-                user_names = [cellstr(user_names) default_user_names(numel(user_names)+1:end)];
+                user_names = [cellstr(user_names) ; default_user_names(numel(user_names)+1:end)];
             
             % If excess names, ignore excess
             elseif numel(user_names) > N
@@ -372,6 +372,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
             %   chan_fluxes - channel biphoton flux
             %   chan_unitry - (:,:,K) matrix of channel unitaries
             %   chan_states - (:,:,K) matrix of initial channel density matrices
+            chan_fluxes = chan_fluxes(:);
             sz1 = [size(chan_fluxes,1), size(chan_unitry,3), size(chan_states,3)];
             if any(sz1 ~= sz1(1))
                 error("Dimension Mismatch: Unequal channels")
@@ -404,22 +405,22 @@ classdef QLAN < handle & matlab.mixin.Copyable
             %   cell vector of char vectors USERNAMES
                         
             % Check if arg is string or cell string array
-            istextcolvector = @(x) size(x,2) == 1 && (isstring(x) || iscellstr(x));
+            istextvector = @(x)isvector(x) && (isstring(x) || iscellstr(x));
             
             p = inputParser;
-            p.FunctionName = 'configLinks';
+%             p.FunctionName = 'configLinks';
             p.addRequired('obj', @(x) isa(x,'QLAN'));
             p.addRequired('links', @(x) size(x,2) == 2 && ...
                                    isnumeric(x) && ...
                                    max(x,[],'all') <= obj.N);
-            p.addOptional('labels',[], istextcolvector);
-            p.addParameter('GenLabels', [], istextcolvector);
+            p.addOptional('labels',[], istextvector);
+            p.addParameter('GenLabels', [], istextvector);
             
             p.parse(obj,links,varargin{:});
             obj = p.Results.obj;
             links = p.Results.links;
-            labels = p.Results.labels;
-            unames = p.Results.GenLabels;
+            labels = p.Results.labels(:);
+            unames = p.Results.GenLabels(:);
             
             n = size(links,1); 
             
@@ -458,16 +459,29 @@ classdef QLAN < handle & matlab.mixin.Copyable
             %       - 
             
             persistent cfg_msgs;
+            cfg_msgs = {
+                'Invalid coincidence window';
+                'Channel unitaries unspecified';
+                'Channel states unspecified';
+                'Channel fluxes unspecified';
+                'Network links unspecified';
+                'User efficiencies unspecified';
+                'User dark count rates unspecified';
+            };
             
-            tf_arr = [obj.coinc_wind_s > 0
-            ~isempty(obj.U_K)
-            ~isempty(obj.rho_K)
-            ~isempty(obj.chan_fluxes)
-            ~isequal(obj.g, graph())
-            ~isempty(obj.eff_N)
+            tf_arr = [obj.coinc_wind_s > 0;
+            ~isempty(obj.U_K);
+            ~isempty(obj.rho_K);
+            ~isempty(obj.chan_fluxes);
+            ~isempty(obj.inc_mat);
+            ~isempty(obj.eff_N);
             ~isempty(obj.d_N)];
             
             tf = all(tf_arr);
+            if ~tf
+                disp(cfg_msgs{tf_arr})
+            end
+                
         end
         
         %% Dependent property accessors
