@@ -14,7 +14,7 @@ q.link_fluxes = [1e7 1e7 1e7]';
 alloc1 = [1;3;3;3;3;3;3;2];
 alloc2 = [3;3;1;2;0;0;0;0];
 allocs = [alloc1 alloc2];
-%% Using multi-objective genetic algo
+%% Using interp1
 
 alloc1_goal_fids = [0.75 0.90 0.55];
 alloc2_goal_fids = [0.75 0.84 0.69];
