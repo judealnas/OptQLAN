@@ -4,6 +4,6 @@ function f = fidelity(rho,sigma)
 [sqrtm_rho, res] = sqrtm(rho);
 prod_rho_sig = sqrtm_rho * sigma * sqrtm_rho;
 [sqrtm_prod, res] = sqrtm(prod_rho_sig);
-f = trace(prod_rho_sig);
+f = trace(sqrtm_prod).^2;
 end
 
