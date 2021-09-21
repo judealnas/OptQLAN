@@ -377,7 +377,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
             %   chan_fluxes - channel biphoton flux
             %   chan_unitry - (:,:,K) matrix of channel unitaries
             %   chan_states - (:,:,K) matrix of initial channel density matrices
-            sz1 = [size(chan_fluxes,1), size(chan_unitry,3), size(chan_states,3)];
+            sz1 = [size(chan_fluxes(:),1), size(chan_unitry,3), size(chan_states,3)];
             if any(sz1 ~= sz1(1))
                 error("Dimension Mismatch: Unequal channels")
             end
@@ -592,18 +592,18 @@ classdef QLAN < handle & matlab.mixin.Copyable
             
             obj.alloc_vect = alloc_vect;
             obj.alloc_mat = QLAN.allocVect2Mat(alloc_vect, obj.L);
-            obj.link_fluxes = obj.calcLinkFluxes();
-            obj.user_fluxes = obj.calcUserFluxes();
-            obj.R_N = obj.calcUserSingleRate();
-            obj.A_L = obj.calcLinkAccRate();
-            obj.C_L = obj.calcLinkCorrRate();
-            obj.lambda_L = obj.calcStateWeights();
-            obj.rho_L = obj.calcLinkStates();
-            obj.sigma_L = obj.calcNoisyLinkStates();
+            obj.calcLinkFluxes();
+            obj.calcUserFluxes();
+            obj.calcUserSingleRate();
+            obj.calcLinkAccRate();
+            obj.calcLinkCorrRate();
+            obj.calcStateWeights();
+            obj.calcLinkStates();
+            obj.calcNoisyLinkStates();
             
             ref_rho = repmat(ref_rho,1,1,obj.L);
-            obj.F_L = obj.calcFidelity(ref_rho);
-            obj.ebr_L = obj.calcEbitRates();
+            obj.calcFidelity(ref_rho);
+            obj.calcEbitRates();
             x = [obj.F_L(:), obj.ebr_L(:)];
         end
         
