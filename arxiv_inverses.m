@@ -20,9 +20,9 @@ q = QLAN([], 'arxiv_users.json');
 q.coinc_wind_s = 5e-9;
 q.configChans(1:K, U_K, rho_K);
 
-link_AB = q.g.findedge('Alice', 'Bob');
-link_AC = q.g.findedge('Alice', 'Charlie');
-link_BC = q.g.findedge('Charlie', 'Bob');
+link_AB = q.linkIDX('Alice', 'Bob');
+link_AC = q.linkIDX('Alice', 'Charlie');
+link_BC = q.linkIDX('Charlie', 'Bob');
 
 alloc1 = uint8([link_AB;link_BC;link_BC;link_BC;link_BC;link_BC;link_BC;link_AC]);
 alloc2 = uint8([link_BC;link_BC;link_AB;link_AC;0;0;0;0]);
