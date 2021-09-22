@@ -623,5 +623,49 @@ classdef QLAN < handle & matlab.mixin.Copyable
             disp(table(obj.user_names, obj.eff_N*100, obj.d_N,...
                 'VariableNames', {'Name', 'Efficiency (%)', 'Dark Count Rate'}))
         end
+        
+        %% Utility Methods
+        function ind = usrIDX(obj, name)
+            if ischar(usr) || (isstring(usr) && numel(usr) == 1)
+                ind = find(strcmp(obj.user_names, name));
+            else
+                error("Pass char vect or string as user name")
+            end
+            
+        end
+        
+        function ind = linkIDX(obj, usr1, usr2)
+            isnumber = @(x) isscalar(x) && isnumeric(x);
+            istext = @(x) ischar(x) || (isstring(x) && numel(x) == 1);
+            
+            inds = zeros(2,1);
+            if istext(usr1) && istext(usr2)
+                inds = [find(strcmp(obj.user_names,usr1));
+                        find(strcmp(obj.user_names,usr2))];
+            elseif isnumber(usr1) && isnumber(usr2)
+                inds = [usr1;
+                        usr2];
+            else
+                error("Arguments must both be integers, char vectors, or strings")
+            end
+            
+            for ind = 1:obj.L
+                if all(ismember(inds, obj.links(ind,:)))
+                    return
+                end
+            end
+        end
+        
+        function deg = userDegree(obj, usr)
+            if ischar(usr) || (isstring(usr) && numel(usr) == 1)
+                usr_ind = find(strcmp(obj.user_names, usr));
+            elseif isscalar(usr) && isnumeric(usr)
+                usr_ind = usr;
+            else
+                error("Integer, char vector, or string required")
+            end
+            
+            deg = sum(any(obj.links == usr_ind, 2));
+        end
     end
 end
