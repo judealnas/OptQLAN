@@ -580,20 +580,21 @@ classdef QLAN < handle & matlab.mixin.Copyable
             %   number of channel pairs and 0 <= l <= L, the number of 
             %   links.
             
-            valid_alloc = @(x) isequal(size(x(:)), [obj.K 1]) && ...
-                max(alloc_vect) <= obj.L && min(alloc_vect) >= 0;
+            valid_alloc = @(x) isvector(x) && numel(x) == obj.K && ... % Vector of K elements
+                max(alloc_vect) <= obj.L && min(alloc_vect) >= 0 && ... % no out of range links
+                ~any(mod(x,1)); % all integers
             
-            p = inputParser;
-            p.addRequired('obj', @(x) isa(x,'QLAN'));
-            p.addRequired('alloc_vect', valid_alloc);
-            p.addRequired('ref_rho', @(x) all(size(ref_rho) == size(obj.U_K, [1 2])));
+            valid_refmat = @(x) (isequal(size(ref_rho, [1 2]), size(obj.U_K, [1 2])) &&...
+                                 size(ref_rho,3) == 1 || size(ref_rho,3) == obj.L);
             
-            p.parse(obj, alloc_vect, ref_rho)
-            obj = p.Results.obj;
-            alloc_vect = p.Results.alloc_vect(:);
-            ref_rho = p.Results.ref_rho;
+            if ~valid_alloc(alloc_vect)
+                error('Invalid allocation. Allocation must be vector of integers ranging from 0 to %d', obj.L);
+            end
+            if ~valid_refmat(ref_rho)
+                error("Reference density matrix incompatible with channel unitaries. Reference matrix must be 1 or %d pages of %d-by-%d matrices.", obj.L, size(obj.U_K,1), size(obj.U_K,2));
+            end
             
-            obj.alloc_vect = alloc_vect;
+            obj.alloc_vect = alloc_vect(:);
             obj.alloc_mat = QLAN.allocVect2Mat(alloc_vect, obj.L);
             obj.calcLinkFluxes();
             obj.calcUserFluxes();
@@ -638,7 +639,6 @@ classdef QLAN < handle & matlab.mixin.Copyable
             isnumber = @(x) isscalar(x) && isnumeric(x);
             istext = @(x) ischar(x) || (isstring(x) && numel(x) == 1);
             
-            inds = zeros(2,1);
             if istext(usr1) && istext(usr2)
                 inds = [find(strcmp(obj.user_names,usr1));
                         find(strcmp(obj.user_names,usr2))];
