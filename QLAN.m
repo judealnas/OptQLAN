@@ -408,7 +408,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
             istextvector = @(x)isvector(x) && (isstring(x) || iscellstr(x));
             
             p = inputParser;
-%             p.FunctionName = 'configLinks';
+            p.FunctionName = 'configLinks';
             p.addRequired('obj', @(x) isa(x,'QLAN'));
             p.addRequired('links', @(x) size(x,2) == 2 && ...
                                    isnumeric(x) && ...
@@ -567,7 +567,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
             obj.ebr_L = ebr_L;
         end
         
-        function x = evalAlloc(obj, alloc_vect, ref_rho)
+        function evalAlloc(obj, alloc_vect, ref_rho)
             %EVALALLOC returns QLAN performance metrics given a spectrum
             %allocation
             %
@@ -608,9 +608,58 @@ classdef QLAN < handle & matlab.mixin.Copyable
             ref_rho = repmat(ref_rho,1,1,obj.L);
             obj.calcFidelity(ref_rho);
             obj.calcEbitRates();
-            x = [obj.F_L(:), obj.ebr_L(:)];
         end
         
+        function evalIsoAlloc(obj, alloc_vect, ref_rho)
+            valid_alloc = @(x) isvector(x) && numel(x) == obj.K && ... % Vector of K elements
+                max(alloc_vect) <= obj.L && min(alloc_vect) >= 0 && ... % no out of range links
+                ~any(mod(x,1)); % all integers
+            
+            valid_refmat = @(x) (isequal(size(ref_rho, [1 2]), size(obj.U_K, [1 2])) &&...
+                size(ref_rho,3) == 1 || size(ref_rho,3) == obj.L);
+            
+            if ~valid_alloc(alloc_vect)
+                error('Invalid allocation. Allocation must be vector of integers ranging from 0 to %d', obj.L);
+            end
+            if ~valid_refmat(ref_rho)
+                error("Reference density matrix incompatible with channel unitaries. Reference matrix must be 1 or %d pages of %d-by-%d matrices.", obj.L, size(obj.U_K,1), size(obj.U_K,2));
+            end
+            
+            qtemp = copy(obj);
+            
+            
+            % Preallocated matrices to hold evaluation and improve
+            % performance
+            obj.user_fluxes = zeros(obj.N, obj.L);
+            obj.R_N = zeros(obj.N, obj.L);
+            obj.link_fluxes = zeros(obj.L, 1);
+            obj.A_L = zeros(obj.L, 1);
+            obj.C_L = zeros(obj.L, 1);
+            obj.lambda_L = zeros(obj.L, 1);
+            obj.F_L = zeros(obj.L, 1);
+            obj.ebr_L = zeros(obj.L, 1);
+            obj.rho_L = zeros([size(obj.rho_K, [1 2]) obj.L]);
+            obj.sigma_L = zeros([size(obj.rho_K, [1 2]) obj.L]);
+            
+            obj.alloc_vect = alloc_vect;
+            obj.alloc_mat = QLAN.allocVect2Mat(alloc_vect, obj.L);
+            for i = 1:qtemp.L
+                iso_alloc = alloc_vect;
+                iso_alloc(alloc_vect ~= i) = 0;
+                qtemp.evalAlloc(iso_alloc, ref_rho)
+                
+                obj.link_fluxes(i) = qtemp.link_fluxes(i);
+                obj.user_fluxes(:,i) = qtemp.user_fluxes;
+                obj.R_N(:,i) = qtemp.R_N;
+                obj.A_L(i) = qtemp.A_L(i);
+                obj.C_L(i) = qtemp.C_L(i);
+                obj.lambda_L(i) = qtemp.lambda_L(i);
+                obj.rho_L(:,:,i) = qtemp.rho_L(:,:,i);
+                obj.sigma_L(:,:,i) = qtemp.sigma_L(:,:,i);
+                obj.F_L(i) = qtemp.F_L(i);
+                obj.ebr_L(i) = qtemp.ebr_L(i);
+            end
+        end
         %% Plotting/Display Methods
         function plotGraph(obj)
             edgetable = table(obj.links, obj.link_labels,...
