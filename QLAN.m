@@ -660,6 +660,73 @@ classdef QLAN < handle & matlab.mixin.Copyable
                 obj.ebr_L(i) = qtemp.ebr_L(i);
             end
         end
+        
+        function evalBatchIsoAlloc(obj, alloc_vect, ref_rho)
+            valid_alloc = @(x) isvector(x) && numel(x) == obj.K && ... % Vector of K elements
+                max(alloc_vect) <= obj.L && min(alloc_vect) >= 0 && ... % no out of range links
+                ~any(mod(x,1)); % all integers
+            
+            valid_refmat = @(x) (isequal(size(ref_rho, [1 2]), size(obj.U_K, [1 2])) &&...
+                size(ref_rho,3) == 1 || size(ref_rho,3) == obj.L);
+            
+            if ~valid_alloc(alloc_vect)
+                error('Invalid allocation. Allocation must be vector of integers ranging from 0 to %d', obj.L);
+            end
+            if ~valid_refmat(ref_rho)
+                error("Reference density matrix incompatible with channel unitaries. Reference matrix must be 1 or %d pages of %d-by-%d matrices.", obj.L, size(obj.U_K,1), size(obj.U_K,2));
+            end
+            
+            % To accelerate isoalted link evaluation, sets of non-adjacent
+            % links are generated. Non-adjacent links are those that do not
+            % share users. The links in each set are evaluated. The valid
+            % user and link quantities are indexed and stored.
+            qtemp = copy(obj); % QLAN copy used for evaluation
+            
+            % Preallocated matrices to hold evaluation and improve
+            % performance
+            obj.user_fluxes = zeros(obj.N, obj.L);
+            obj.R_N = zeros(obj.N, obj.L);
+            obj.link_fluxes = zeros(obj.L, 1);
+            obj.A_L = zeros(obj.L, 1);
+            obj.C_L = zeros(obj.L, 1);
+            obj.lambda_L = zeros(obj.L, 1);
+            obj.F_L = zeros(obj.L, 1);
+            obj.ebr_L = zeros(obj.L, 1);
+            obj.rho_L = zeros([size(obj.rho_K, [1 2]) obj.L]);
+            obj.sigma_L = zeros([size(obj.rho_K, [1 2]) obj.L]);
+            
+            obj.alloc_vect = alloc_vect(:);
+            obj.alloc_mat = QLAN.allocVect2Mat(alloc_vect, obj.L);
+            nonadj_links = nonAdjLinkSet(obj.links);
+            for i = 1:numel(nonadj_links)
+                iso_links = nonadj_links{i}; % Get isoalted links
+                
+                % Constructed isolated allocation
+                iso_alloc = alloc_vect;
+                iso_alloc(all(alloc_vect ~= iso_links', 2)) = 0;
+                
+                % Evaluate isolated allocation
+                qtemp.evalAlloc(iso_alloc, ref_rho)
+                
+                % User quantities stored in NxL matrix
+                for j = 1:numel(iso_links)
+                    curr_link = iso_links(j);
+                    user_idx = obj.links(curr_link,:);
+                    obj.user_fluxes(user_idx,curr_link) = qtemp.user_fluxes(user_idx);
+                    obj.R_N(user_idx,curr_link) = qtemp.R_N(user_idx);
+                end
+                
+                % Storing link quantities
+                obj.link_fluxes(iso_links) = qtemp.link_fluxes(iso_links);
+                obj.A_L(iso_links) = qtemp.A_L(iso_links);
+                obj.C_L(iso_links) = qtemp.C_L(iso_links);
+                obj.lambda_L(iso_links) = qtemp.lambda_L(iso_links);
+                obj.rho_L(:,:,iso_links) = qtemp.rho_L(:,:,iso_links);
+                obj.sigma_L(:,:,iso_links) = qtemp.sigma_L(:,:,iso_links);
+                obj.F_L(iso_links) = qtemp.F_L(iso_links);
+                obj.ebr_L(iso_links) = qtemp.ebr_L(iso_links);
+            end
+        end
         %% Plotting/Display Methods
         function plotGraph(obj)
             edgetable = table(obj.links, obj.link_labels,...
