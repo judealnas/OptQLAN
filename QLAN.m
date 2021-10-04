@@ -38,6 +38,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
         N; % # of users; calculated as size(eff_N,1);
         K; % # of channel pairs; size(chan_fluxes,1);
         L; % # of non-null network links; size(links,1);
+        D; % Dimension of total quantum system; usually 4
     end
     
     %% Set-protected properties
@@ -647,6 +648,10 @@ classdef QLAN < handle & matlab.mixin.Copyable
         
         function l = get.L(obj)
             l = size(obj.links,1);
+        end
+        
+        function D = get.D(obj)
+            D = size(obj.rho_K,1);
         end
         
         %% User File Loading/Saving methods
