@@ -42,7 +42,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
     
     %% Set-protected properties
     % Calculated quantities
-    properties (SetAccess=public)
+    properties (SetAccess=private)
         links (:,2) {};
         user_file (1,:) char = ''; % File from which users were imported
         alloc_mat logical; % matrix expansion of allocation vector
@@ -55,10 +55,17 @@ classdef QLAN < handle & matlab.mixin.Copyable
         rho_L; % link states prior to adding noise
         sigma_L; % link states after weighting and noise addition
         F_L; % Per link fidelities
+        F_Lmax; % Max possible link fidelities
+        mu_L_Fmax; % Link fluxes for max fidelity
         ebr_L; % Per link ebit rates
+        ebr_Lmax; % Max possible entangled bit rates
+        mu_L_ebrmax; % Link fluxes for max EBR
         
     end
     
+    properties (Constant)
+        sym_vars = {'mu', 'etaA', 'etaB', 'dA', 'dB', 'tau', 'D'};
+    end
     %% Static Methods
     methods (Static=true)
         function M = allocVect2Mat(V,L)
@@ -73,14 +80,14 @@ classdef QLAN < handle & matlab.mixin.Copyable
             %   link.
             
             if ~(isvector(V) && all(mod(V,1) == 0, 'all'))
-                error("V must be a vector of integers >= 0") 
+                error("V must be a vector of integers >= 0")
             end
             M = logical((0:L)' == V(:)');
         end
         
         function link_fluxes = calcLinkFluxes_(alloc_mat, chan_fluxes)
             %CALCLINKFLUXES_ is a static method that returns the flux per
-            %network link 
+            %network link
             %   link_fluxes = calcLinkFluxes_(ALLOC_MAT, CHAN_FLUX) calculates
             %   the flux through the links as the matrix multiplication of the
             %   allocation  matrix and the channel pair flux vector:
@@ -162,7 +169,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
             %desired state per link
             %
             %   lambda_L = calcStateWeights_(A_L,C_L) calculates the weight
-            %   vector as 
+            %   vector as
             %       lambda_L = 1 ./ (1 + A_L ./ C_L)
             %   where A_L and C_L are the link accidental and true
             %   coincidence rates respectively
@@ -170,7 +177,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
         end
         
         function rho_L = calcLinkStates_(alloc_mat, link_fluxes,...
-                                         chan_fluxes, U_K, rho_K)
+                chan_fluxes, U_K, rho_K)
             %CALCLINKSTATES_ is a static method that calculates the state
             %shared on a network link prior to the introduction of noise
             %
@@ -188,7 +195,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
             %   states rho_k. These states are summed, weighting each
             %   channel state by the channel's flux contribution to the
             %   link flux.
-            %   
+            %
             L = size(alloc_mat,1) - 1; % get number of non null links
             rho_L = zeros([size(rho_K,[1 2]) L]);
             for i = 2:(L+1) % iterate over non-null links
@@ -216,14 +223,14 @@ classdef QLAN < handle & matlab.mixin.Copyable
             %       NOISE - DxDxL 3D matrix of noise states
             %       LAMBDA - Lx1 vector of weights
             %       sigma_L - DxDxL 3D matrix of noisy link states
-            %           sigma_L(:,:,l) = 
+            %           sigma_L(:,:,l) =
             %               lambda_L(l)*rho_L(:,:,l) +
             %               (1-lambda_L(l))*noise_L(:,:,l)
             lambda_L = reshape(lambda_L, 1,1, numel(lambda_L));
             sigma_L = pagemtimes(lambda_L, rho_L) + ...
-                      pagemtimes(1-lambda_L, noise_L);
+                pagemtimes(1-lambda_L, noise_L);
             sigma_L(isnan(sigma_L)) = 0;
-        
+            
         end
         
         function F_L = calcFidelity_(rho_L, psi_L)
@@ -233,7 +240,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
             %   F_L = calcFidelity_(RHO, PSI) returns a vector of
             %   fidelities between the corresponding matrices of the 3D
             %   matrices RHO and PSI. RHO and PSI must have the same size
-            %   third dimension (i.e. same number of pages) 
+            %   third dimension (i.e. same number of pages)
             %       RHO - 3D matrix of L pages of matrices
             %       PSI - 3D matrix of L pages of matrices
             %       F_L - Lx1 vector of fidelities between corresponding
@@ -253,7 +260,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
         function ebr_L = calcEbitRate_(A_L, C_L, sigma_L)
             %CALCEBITRATE_ is a static method that calculates the entangled
             %bit rate over a network link
-            %   
+            %
             %   ebr_L = calcEbitRate_(A_L, C_L, SIGMA_L) calculates the
             %   link entangled bit rate using the link coincidence rates
             %   A_L, C_L and the log negativity of the noisy link states
@@ -262,7 +269,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
             %       C_L - Lx1 vector of link truue coincidence rates
             %       SIGMA_L = DxDxL 3D matrix of noisy link states used for
             %       log negativity calculation
-                    
+            
             L = size(sigma_L,3);
             ebr_L = zeros(L,1);
             for i = 1:L
@@ -270,6 +277,151 @@ classdef QLAN < handle & matlab.mixin.Copyable
             end
             
             ebr_L = (A_L + C_L).*ebr_L;
+        end
+        
+        function func = getFuncEBR()
+            %GETFUNCEBR is a static accessor method to a persistent
+            %variable containing the symbolic function for entangled bit
+            %rate assuming isolated links, channel unitaries of identity,
+            %and identical initial channel states
+            persistent sym_ebr
+            if isempty(sym_ebr)
+                vars = sym(QLAN.sym_vars);
+                
+                mu = vars(1);
+                etaA = vars(2);
+                etaB = vars(3);
+                dA = vars(4);
+                dB = vars(5);
+                tau = vars(6);
+                D = vars(7);
+                
+                RA = etaA*mu/2+dA;
+                RB = etaB*mu/2+dB;
+                A = 8*tau*RA*RB;
+                C = etaA*etaB*mu;
+                lambda = 1/(1+A/C);
+                F = ((D-1)*lambda+1)/D;
+                sym_ebr = (A+C)*log2(sqrt(D)*F);
+            end
+            func = sym_ebr;
+        end
+        
+        function func = getFuncDiffEBR()
+            %GETFUNCDiffEBR is a static accessor method to a persistent
+            %variable containing the derivative with respect to isolated
+            %link flux of the entangled bit rate assuming channel unitaries
+            %of identity and identical initial channel states
+            persistent sym_debr
+            if isempty(sym_debr)
+                sym_debr = diff(QLAN.getFuncEBR(),sym('mu'));
+            end
+            func = sym_debr;
+        end
+        
+        function [Fmax, mu_max] = maxFidelity(eff, d, tau, dim)
+            %MAXFIDELITY calculates the maximum theoretical fidelity of
+            %two-user links.
+            %
+            %   FMAX = maxFidelity(EFF,D,TAU,DIM) returns the Lx1 vector FMAX of
+            %   maximum link fidelities given the Lx2 matrices EFF and D.
+            %   Each row of EFF contains the efficiences of users
+            %   constituting a link. Each row of D contains the
+            %   corresponding dark count rates. TAU is a numeric scalar
+            %   representing the coincidence window in seconds. DIM is the
+            %   dimension of the combined quantum system.
+            %
+            %   [FMAX MUMAX] = maxFidelity(EFF,D,TAU,DIM) also returns the isolated
+            %   link flux necessary to achieve the max fidelity.
+            
+            % Input checking
+            if size(eff) ~= size(d)
+                error("Efficiency and dark count matrices must have identical dimensions")
+            end
+            if ~(isscalar(tau) && isnumeric(tau))
+                error("Coincidence window must be a numeric scalar");
+            end
+            
+            if dim < 2 || mod(dim,1) ~= 0
+                error("DIM must be an integer greater than 1")
+            end
+            
+            % Input parsing
+            dA = d(:,1);
+            dB = d(:,2);
+            etaA = eff(:,1);
+            etaB = eff(:,2);
+            
+            % max mu calculation
+            mu_max = 2*sqrt(dA.*dB./(etaA.*etaB));
+            
+            % max fidelity calculation
+            A = dA.*dB;
+            B = sqrt(dA.*dB.*etaA.*etaB);
+            C = dA./etaA + dB./etaB;
+            num = A + B.*(C + dim/(8*tau));
+            denom = A + B.*(C+1/(8*tau));
+            Fmax = num./denom./dim;
+            Fmax(isnan(Fmax)) = 1;
+        end
+        
+        function [EBRmax, mumax] = maxEBR(eff, d, tau, dim)
+            %MAXEBR calculates the maximum theoretical fidelity of
+            %two-user links.
+            %
+            %   EMAX = maxEBR(EFF,D,TAU,DIM) returns the Lx1 vector EMAX of
+            %   maximum link entangled bit rates given the Lx2 matrices EFF
+            %   and D. Each row of EFF contains the efficiences of users
+            %   constituting a link. Each row of D contains the
+            %   corresponding dark count rates. TAU is a numeric scalar
+            %   representing the coincidence window in seconds. DIM is the
+            %   dimension of the combined quantum system.
+            %
+            %   [EMAX MUMAX] = maxEBR(EFF,D,TAU,DIM) also returns the
+            %   isolated link flux necessary to achieve the max entangled
+            %   bit rate.
+            
+            % Input checking
+            if size(eff) ~= size(d)
+                error("Efficiency and dark count matrices must have identical dimensions")
+            end
+            if ~(isscalar(tau) && isnumeric(tau))
+                error("Coincidence window must be a numeric scalar");
+            end
+            
+            if dim < 2 || mod(dim,1) ~= 0
+                error("DIM must be an integer greater than 1")
+            end
+            
+            % Get number of links
+            L = size(eff,1);
+            
+            % Initializer output variables
+            EBRmax = zeros(L,1);
+            mumax = zeros(L,1);
+            
+            % Iterate over links, evaluating max values
+            for i = 1:L
+                % Build substitution array; MUST CORRELATE WITH
+                % QLAN.sym_vars
+                sub_vals = [eff(i,:) d(i,:) tau dim];
+                
+                EBR_func = subs(QLAN.getFuncEBR(), QLAN.sym_vars(2:end), sub_vals);
+                dEBR_func = diff(EBR_func,sym(QLAN.sym_vars{1}));
+                
+                % EBR is known to be quadratic, so one critical point
+                % exists in the domain of positive flux. First find the
+                % roots of EBR. Use mid-point of roots as starting point of
+                % vpasolve()
+                
+                % Find unique semi-positive roots of EBR to help vpasolve()
+                roots_RE = eval(solve(EBR_func == 0));
+                roots_RE = unique(roots_RE(roots_RE >= 0));
+                
+                % Find critical point of dEBR between roots
+                mumax(i) = vpasolve(dEBR_func == 0, sym(QLAN.sym_vars{1}), mean(roots_RE));
+                EBRmax(i) = eval(subs(EBR_func, sym(QLAN.sym_vars{1}), mumax(i)));
+            end
         end
     end
     
@@ -300,7 +452,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
             d_N = p.Results.d_N;
             user_names = p.Results.UserNames(:);
             link_names = p.Results.LinkNames(:);
-                       
+            
             % Getting users from file file_eff arg is text
             if istext(file_eff)
                 filename = file_eff;
@@ -311,7 +463,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
                     user_names = file_user_names;
                 end
                 
-            % Otherwise file_eff is numeric vector of efficiencies
+                % Otherwise file_eff is numeric vector of efficiencies
             else
                 filename = '';
                 eff_N = file_eff(:);
@@ -340,23 +492,23 @@ classdef QLAN < handle & matlab.mixin.Copyable
                     file_eff, N, max(links, [], 'all'))
             end
             
-            % If user_names empty, use default names 
+            % If user_names empty, use default names
             if isempty(user_names)
                 user_names = default_user_names;
-            
-            % if insufficient names, pad using default names
+                
+                % if insufficient names, pad using default names
             elseif numel(user_names) < N
                 warning("%d node names provided when expecting %d. Padding with default names",...
                     numel(user_names), N);
                 
                 user_names = [cellstr(user_names) ; default_user_names(numel(user_names)+1:end)];
-            
-            % If excess names, ignore excess
+                
+                % If excess names, ignore excess
             elseif numel(user_names) > N
                 warning("Too many user names specified. Extra names ignored");
                 user_names = user_names(1:N);
             end
-            obj.user_names = user_names; % Saving user names 
+            obj.user_names = user_names; % Saving user names
             
             % If no link names provided, use user names to generate names
             if isempty(link_names)
@@ -389,13 +541,13 @@ classdef QLAN < handle & matlab.mixin.Copyable
         
         function obj = configLinks(obj, links, varargin)
             %CONFIGLINKS re-connects users in a QLAN to form an entanglement
-            %   network. 
+            %   network.
             %
             %   configLinks(QLAN, LINKS) - connects users in the
             %   QLAN object according to the Lx2 numeric matrix LINKS. Each
             %   row of LINKS contains the indices of users forming the link
             %   endpoints.
-            %   
+            %
             %   configLinks(QLAN, LINKS, LABELS) uses the string vector or
             %   cell vector of char vectors LABELS as link labels for
             %   plotting
@@ -403,7 +555,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
             %   configLinks(QLAN, LINKS, 'GenLabels', USERNAMES) generates
             %   link labels using the matrix LINKS and the string vector or
             %   cell vector of char vectors USERNAMES
-                        
+            
             % Check if arg is string or cell string array
             istextvector = @(x)isvector(x) && (isstring(x) || iscellstr(x));
             
@@ -411,8 +563,8 @@ classdef QLAN < handle & matlab.mixin.Copyable
             p.FunctionName = 'configLinks';
             p.addRequired('obj', @(x) isa(x,'QLAN'));
             p.addRequired('links', @(x) size(x,2) == 2 && ...
-                                   isnumeric(x) && ...
-                                   max(x,[],'all') <= obj.N);
+                isnumeric(x) && ...
+                max(x,[],'all') <= obj.N);
             p.addOptional('labels',[], istextvector);
             p.addParameter('GenLabels', [], istextvector);
             
@@ -422,7 +574,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
             labels = p.Results.labels(:);
             unames = p.Results.GenLabels(:);
             
-            n = size(links,1); 
+            n = size(links,1);
             
             % Generating default link labels
             if isempty(unames)
@@ -433,10 +585,10 @@ classdef QLAN < handle & matlab.mixin.Copyable
             end
             
             if ~isempty(labels)
-                if numel(labels) < n 
+                if numel(labels) < n
                     warning("Insufficient link labels provided");
                     labels = [cellstr(labels)
-                              default_labels(numel(labels)+1:end)];
+                        default_labels(numel(labels)+1:end)];
                 elseif numel(labels) > n
                     warning("Excess link labels ignored")
                     labels = labels(1:n);
@@ -456,7 +608,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
             %
             %   tf = isConfiged(QLAN) returns true if the following
             %   parameters meet the corresponding conditions:
-            %       - 
+            %       -
             
             persistent cfg_msgs;
             cfg_msgs = {
@@ -467,21 +619,21 @@ classdef QLAN < handle & matlab.mixin.Copyable
                 'Network links unspecified';
                 'User efficiencies unspecified';
                 'User dark count rates unspecified';
-            };
+                };
             
             tf_arr = [obj.coinc_wind_s > 0;
-            ~isempty(obj.U_K);
-            ~isempty(obj.rho_K);
-            ~isempty(obj.chan_fluxes);
-            ~isempty(obj.inc_mat);
-            ~isempty(obj.eff_N);
-            ~isempty(obj.d_N)];
+                ~isempty(obj.U_K);
+                ~isempty(obj.rho_K);
+                ~isempty(obj.chan_fluxes);
+                ~isempty(obj.inc_mat);
+                ~isempty(obj.eff_N);
+                ~isempty(obj.d_N)];
             
             tf = all(tf_arr);
             if ~tf
                 disp(cfg_msgs{tf_arr})
             end
-                
+            
         end
         
         %% Dependent property accessors
@@ -496,7 +648,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
         function l = get.L(obj)
             l = size(obj.links,1);
         end
-
+        
         %% User File Loading/Saving methods
         function obj = saveUsersToFile(obj, filename)
             saveUsersToFile(filename, obj.eff_N, obj.d_N, obj.user_names);
@@ -523,7 +675,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
         end
         
         function A_L = calcLinkAccRate(obj)
-            A_L = obj.calcLinkAccRate_(full(obj.inc_mat), obj.R_N, obj.coinc_wind_s); 
+            A_L = obj.calcLinkAccRate_(full(obj.inc_mat), obj.R_N, obj.coinc_wind_s);
             obj.A_L = A_L;
         end
         
@@ -539,7 +691,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
         
         function rho_L = calcLinkStates(obj)
             rho_L = obj.calcLinkStates_(obj.alloc_mat, obj.link_fluxes,...
-                                       obj.chan_fluxes, obj.U_K, obj.rho_K);
+                obj.chan_fluxes, obj.U_K, obj.rho_K);
             obj.rho_L = rho_L;
         end
         
@@ -577,7 +729,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
             %   allocation ALLOC_VECT. RHO must have the same dimensions as
             %   the channel unitaries U_k and initial channel states rho_k.
             %   ALLOC_VECT is a Kx1 vector of link indices l where K is the
-            %   number of channel pairs and 0 <= l <= L, the number of 
+            %   number of channel pairs and 0 <= l <= L, the number of
             %   links.
             
             valid_alloc = @(x) isvector(x) && numel(x) == obj.K && ... % Vector of K elements
@@ -585,7 +737,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
                 ~any(mod(x,1)); % all integers
             
             valid_refmat = @(x) (isequal(size(ref_rho, [1 2]), size(obj.U_K, [1 2])) &&...
-                                 size(ref_rho,3) == 1 || size(ref_rho,3) == obj.L);
+                size(ref_rho,3) == 1 || size(ref_rho,3) == obj.L);
             
             if ~valid_alloc(alloc_vect)
                 error('Invalid allocation. Allocation must be vector of integers ranging from 0 to %d', obj.L);
@@ -730,7 +882,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
         %% Plotting/Display Methods
         function plotGraph(obj)
             edgetable = table(obj.links, obj.link_labels,...
-                              'VariableNames', {'EndNodes', 'EdgeNames'});
+                'VariableNames', {'EndNodes', 'EdgeNames'});
             nodetable = table(obj.user_names, 'VariableNames', {'Name'});
             g = graph(edgetable, nodetable);
             plot(g, 'EdgeLabel', g.Edges.EdgeNames)
@@ -757,10 +909,10 @@ classdef QLAN < handle & matlab.mixin.Copyable
             
             if istext(usr1) && istext(usr2)
                 inds = [find(strcmp(obj.user_names,usr1));
-                        find(strcmp(obj.user_names,usr2))];
+                    find(strcmp(obj.user_names,usr2))];
             elseif isnumber(usr1) && isnumber(usr2)
                 inds = [usr1;
-                        usr2];
+                    usr2];
             else
                 error("Arguments must both be integers, char vectors, or strings")
             end
