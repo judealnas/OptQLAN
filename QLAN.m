@@ -383,7 +383,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
             %   bit rate.
             
             % Input checking
-            if size(eff) ~= size(d)
+            if ~isequal(size(eff),size(d))
                 error("Efficiency and dark count matrices must have identical dimensions")
             end
             if ~(isscalar(tau) && isnumeric(tau))
@@ -424,16 +424,20 @@ classdef QLAN < handle & matlab.mixin.Copyable
                 EBRmax(i) = eval(subs(EBR_func, sym(QLAN.sym_vars{1}), mumax(i)));
             end
         end
+        
+        function obj = saveUsersToFile(obj, filename)
+            saveUsersToFile(filename, obj.eff_N, obj.d_N, obj.user_names);
+        end
+        
+        function obj = loadUsersFromFile(obj, filename)
+            [obj.user_names, obj.eff_N, obj.d_N] = loadUsersFromFile(filename);
+        end
     end
     
     %% Instance Methods
     methods
         %% Configuration Methods
-        function obj = QLAN(varargin)
-            
-            % Check if arg is string or character vector
-            istext = @(x) isstring(x) || ischar(x);
-            
+        function obj = QLAN(varargin)    
             % Check if arg is string vect or cell string array
             istextvector = @(x) isvector(x) && (isstring(x) || iscellstr(x));
             
@@ -442,38 +446,47 @@ classdef QLAN < handle & matlab.mixin.Copyable
             
             p = inputParser;
             p.addRequired('links', @(x)isempty(x) || (size(x,2) == 2 && isnumeric(x)));
-            p.addRequired('file_eff', @(x) istext(x) || isnumcvector(x));
-            p.addOptional('d_N', [], isnumcvector);
+            p.addRequired('eff_N', isnumcvector);
+            p.addRequired('d_N', isnumcvector);
+            p.addRequired('chan_fluxes', isnumcvector);
+            p.addRequired('chan_unitaries', @(x)isnumeric(x));
+            p.addRequired('chan_states', @(x)isnumeric(x));
+            p.addRequired('coinc_wind_s', @(x) isnumeric(x) && isscalar(x));
             p.addParameter('UserNames',[], istextvector);
             p.addParameter('LinkNames',[], istextvector);
             
+            % Parsing input
             p.parse(varargin{:});
             links = p.Results.links;
-            file_eff = p.Results.file_eff;
+            eff_N = p.Results.eff_N;
             d_N = p.Results.d_N;
+            chan_fluxes = p.Results.chan_fluxes;
+            chan_unitaries = p.Results.chan_unitaries;
+            chan_states = p.Results.chan_states;
+            coinc_wind_s = p.Results.coinc_wind_s;
             user_names = p.Results.UserNames(:);
             link_names = p.Results.LinkNames(:);
             
-            % Getting users from file file_eff arg is text
-            if istext(file_eff)
-                filename = file_eff;
-                [file_user_names, eff_N, d_N] = loadUsersFromFile(filename);
-                
-                % If no user names provided, use names from file
-                if isempty(user_names)
-                    user_names = file_user_names;
-                end
-                
-                % Otherwise file_eff is numeric vector of efficiencies
-            else
-                filename = '';
-                eff_N = file_eff(:);
+            % Verify states and unitaries are compatible
+            if ~isequal(size(chan_unitaries),size(chan_states))
+                error("Channel unitary and state dimensions incompatible. Unitaries of size %dx%dx%d while states of size %dx%dx%d",...
+                    size(chan_unitaries,1),size(chan_unitaries,2),size(chan_unitaries,3),...
+                    size(chan_states,1), size(chan_states,2),size(chan_states,3))
             end
             
-            % Save user file, efficiencies, and dark cnts vales
-            obj.user_file = filename;
+            % Verify channel quantites have compatible dimensions
+            if any(numel(chan_fluxes) ~= [size(chan_unitaries,3) size(chan_states,3)])
+                error("Channel quantity dimensions not compatible. %d channel fluxes, %d channel unitaries, and %d channel states provided.",...
+                    numel(chan_fluxes),size(chan_unitaries,3),size(chan_states,3))
+            end
+                
+            % Saveing quantities to object
             obj.eff_N = eff_N;
             obj.d_N = d_N;
+            obj.chan_fluxes = chan_fluxes;
+            obj.U_K = chan_unitaries;
+            obj.rho_K = chan_states;
+            obj.coinc_wind_s = coinc_wind_s;
             
             % Get # of users
             N = size(eff_N,1);
@@ -493,49 +506,50 @@ classdef QLAN < handle & matlab.mixin.Copyable
                     file_eff, N, max(links, [], 'all'))
             end
             
-            % If user_names empty, use default names
-            if isempty(user_names)
+            % Getting user names
+            if isempty(user_names) % If user_names empty, use default names
                 user_names = default_user_names;
-                
-                % if insufficient names, pad using default names
-            elseif numel(user_names) < N
+            elseif numel(user_names) < N % if insufficient names, pad using default names
                 warning("%d node names provided when expecting %d. Padding with default names",...
                     numel(user_names), N);
-                
                 user_names = [cellstr(user_names) ; default_user_names(numel(user_names)+1:end)];
                 
-                % If excess names, ignore excess
-            elseif numel(user_names) > N
+            elseif numel(user_names) > N % If excess names, ignore excess
                 warning("Too many user names specified. Extra names ignored");
                 user_names = user_names(1:N);
             end
             obj.user_names = user_names; % Saving user names
             
-            % If no link names provided, use user names to generate names
-            if isempty(link_names)
+            % Constructing links 
+            if isempty(link_names) % If no link names provided, use user names to generate names
                 obj.configLinks(links, 'GenLabels', user_names);
             else
                 obj.configLinks(links, link_names);
             end
         end
         
-        function obj = configChans(obj, chan_fluxes, chan_unitry, chan_states)
+        function obj = configChans(obj, chan_fluxes, chan_unitaries, chan_states)
             %CONFIGCHANS(Q, chan_fluxes, chan_unitry, chan_states)
             %configures the following QLAN properties:
-            %   chan_fluxes - channel biphoton flux
-            %   chan_unitry - (:,:,K) matrix of channel unitaries
+            %   chan_fluxes - channel biphoton flux vector
+            %   chan_unitaries - (:,:,K) matrix of channel unitaries
             %   chan_states - (:,:,K) matrix of initial channel density matrices
+            
+            if ~(isvector(chan_fluxes) && isnumeric(chan_fluxes))
+                error("Channel fluxes must be a numeric vector")
+            end
+            
             chan_fluxes = chan_fluxes(:);
-            sz1 = [size(chan_fluxes,1), size(chan_unitry,3), size(chan_states,3)];
-            if any(sz1 ~= sz1(1))
+            
+            if any(numel(chan_fluxes) ~= [size(chan_unitaries,3), size(chan_states,3)])
                 error("Dimension Mismatch: Unequal channels")
             end
             
-            if any(size(chan_unitry, [1 2]) ~= size(chan_states, [1 2]))
+            if any(size(chan_unitaries, [1 2]) ~= size(chan_states, [1 2]))
                 error("Dimension Mismatch: unitaries and states are incompatible sizes");
             end
             
-            obj.U_K = chan_unitry;
+            obj.U_K = chan_unitaries;
             obj.rho_K = chan_states;
             obj.chan_fluxes = chan_fluxes;
         end
@@ -652,15 +666,6 @@ classdef QLAN < handle & matlab.mixin.Copyable
         
         function D = get.D(obj)
             D = size(obj.rho_K,1);
-        end
-        
-        %% User File Loading/Saving methods
-        function obj = saveUsersToFile(obj, filename)
-            saveUsersToFile(filename, obj.eff_N, obj.d_N, obj.user_names);
-        end
-        
-        function obj = loadUsersFromFile(obj, filename)
-            [obj.user_names, obj.eff_N, obj.d_N] = loadUsersFromFile(filename);
         end
         
         %% Metric Calculation Methods
