@@ -643,40 +643,6 @@ classdef QLAN < handle & matlab.mixin.Copyable
             obj.link_labels = labels;
         end
         
-        function tf = isConfiged(obj)
-            %ISCONFIGED checks if the necessary QLAN parameters have been
-            %set in order to calculate network metrics.
-            %
-            %   tf = isConfiged(QLAN) returns true if the following
-            %   parameters meet the corresponding conditions:
-            %       -
-            
-            persistent cfg_msgs;
-            cfg_msgs = {
-                'Invalid coincidence window';
-                'Channel unitaries unspecified';
-                'Channel states unspecified';
-                'Channel fluxes unspecified';
-                'Network links unspecified';
-                'User efficiencies unspecified';
-                'User dark count rates unspecified';
-                };
-            
-            tf_arr = [obj.coinc_wind_s > 0;
-                ~isempty(obj.U_K);
-                ~isempty(obj.rho_K);
-                ~isempty(obj.chan_fluxes);
-                ~isempty(obj.inc_mat);
-                ~isempty(obj.eff_N);
-                ~isempty(obj.d_N)];
-            
-            tf = all(tf_arr);
-            if ~tf
-                disp(cfg_msgs{tf_arr})
-            end
-            
-        end
-        
         %% Dependent property accessors
         function k = get.K(obj)
             k = numel(obj.chan_fluxes);
