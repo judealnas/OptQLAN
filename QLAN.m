@@ -175,6 +175,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
             %   where A_L and C_L are the link accidental and true
             %   coincidence rates respectively
             lambda_L = 1./(1 + A_L ./ C_L);
+            lambda_L(isnan(lambda_L)) = 0;
         end
         
         function rho_L = calcLinkStates_(alloc_mat, link_fluxes,...
@@ -200,16 +201,18 @@ classdef QLAN < handle & matlab.mixin.Copyable
             L = size(alloc_mat,1) - 1; % get number of non null links
             rho_L = zeros([size(rho_K,[1 2]) L]);
             for i = 2:(L+1) % iterate over non-null links
-                alloc_chans = logical(alloc_mat(i,:));
-                U = U_K(:,:,alloc_chans); % unitaries of channels allocated to link i-1
-                rho = rho_K(:,:,alloc_chans); % initial states of channels allocated to link i-1
-                chan_flux = chan_fluxes(alloc_chans); % get channel fluxes allocated to link i-1
-                chan_flux = reshape(chan_flux,1,1,numel(chan_flux)); % reshape to 3D vector for quicker math
-                
-                % Calculate sum of all chan_flux*U*rho*U' density matrices
-                % associated with link and normalize by total link flux
-                rho_L(:,:,i-1) = sum(pagemtimes(chan_flux,pagemtimes(pagemtimes(U,rho),'none',U,'ctranspose')),3);
-                rho_L(:,:,i-1) = rho_L(:,:,i-1)./link_fluxes(i);
+                if link_fluxes(i) ~= 0
+                    alloc_chans = logical(alloc_mat(i,:));
+                    U = U_K(:,:,alloc_chans); % unitaries of channels allocated to link i-1
+                    rho = rho_K(:,:,alloc_chans); % initial states of channels allocated to link i-1
+                    chan_flux = chan_fluxes(alloc_chans); % get channel fluxes allocated to link i-1
+                    chan_flux = reshape(chan_flux,1,1,numel(chan_flux)); % reshape to 3D vector for quicker math
+                    
+                    % Calculate sum of all chan_flux*U*rho*U' density matrices
+                    % associated with link and normalize by total link flux
+                    rho_L(:,:,i-1) = sum(pagemtimes(chan_flux,pagemtimes(pagemtimes(U,rho),'none',U,'ctranspose')),3);
+                    rho_L(:,:,i-1) = rho_L(:,:,i-1)./link_fluxes(i);
+                end
             end
         end
         
@@ -227,11 +230,9 @@ classdef QLAN < handle & matlab.mixin.Copyable
             %           sigma_L(:,:,l) =
             %               lambda_L(l)*rho_L(:,:,l) +
             %               (1-lambda_L(l))*noise_L(:,:,l)
-            lambda_L = reshape(lambda_L, 1,1, numel(lambda_L));
+            lambda_L = reshape(lambda_L, 1,1, []);
             sigma_L = pagemtimes(lambda_L, rho_L) + ...
                 pagemtimes(1-lambda_L, noise_L);
-            sigma_L(isnan(sigma_L)) = 0;
-            
         end
         
         function F_L = calcFidelity_(rho_L, psi_L)
