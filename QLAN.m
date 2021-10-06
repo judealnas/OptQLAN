@@ -280,6 +280,28 @@ classdef QLAN < handle & matlab.mixin.Copyable
             ebr_L = (A_L + C_L).*ebr_L;
         end
         
+        function func = getFuncFid()
+            persistent sym_fid
+            if isempty(sym_fid)
+                vars = sym(QLAN.sym_vars);
+                
+                mu = vars(1);
+                etaA = vars(2);
+                etaB = vars(3);
+                dA = vars(4);
+                dB = vars(5);
+                tau = vars(6);
+                D = vars(7);
+                
+                RA = etaA*mu/2+dA;
+                RB = etaB*mu/2+dB;
+                A = 8*tau*RA*RB;
+                C = etaA*etaB*mu;
+                lambda = 1/(1+A/C);
+                sym_fid = ((D-1)*lambda+1)/D;
+            end
+            func = sym_fid;
+        end
         function func = getFuncEBR()
             %GETFUNCEBR is a static accessor method to a persistent
             %variable containing the symbolic function for entangled bit
@@ -437,7 +459,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
     %% Instance Methods
     methods
         %% Configuration Methods
-        function obj = QLAN(varargin)    
+        function obj = QLAN(varargin)
             % Check if arg is string vect or cell string array
             istextvector = @(x) isvector(x) && (isstring(x) || iscellstr(x));
             
@@ -479,7 +501,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
                 error("Channel quantity dimensions not compatible. %d channel fluxes, %d channel unitaries, and %d channel states provided.",...
                     numel(chan_fluxes),size(chan_unitaries,3),size(chan_states,3))
             end
-                
+            
             % Saveing quantities to object
             obj.eff_N = eff_N;
             obj.d_N = d_N;
@@ -520,12 +542,16 @@ classdef QLAN < handle & matlab.mixin.Copyable
             end
             obj.user_names = user_names; % Saving user names
             
-            % Constructing links 
+            % Constructing links
             if isempty(link_names) % If no link names provided, use user names to generate names
                 obj.configLinks(links, 'GenLabels', user_names);
             else
                 obj.configLinks(links, link_names);
             end
+            
+            % Calculating theoretical maxima
+            [obj.F_Lmax, obj.mu_L_Fmax] = QLAN.maxFidelity(eff_N(links), d_N(links), coinc_wind_s, size(chan_states,1));
+            [obj.ebr_Lmax, obj.mu_L_ebrmax] = QLAN.maxEBR(eff_N(links), d_N(links), coinc_wind_s, size(chan_states,1));
         end
         
         function obj = configChans(obj, chan_fluxes, chan_unitaries, chan_states)
@@ -789,7 +815,6 @@ classdef QLAN < handle & matlab.mixin.Copyable
             
             qtemp = copy(obj);
             
-            
             % Preallocated matrices to hold evaluation and improve
             % performance
             obj.user_fluxes = zeros(obj.N, obj.L);
@@ -902,7 +927,6 @@ classdef QLAN < handle & matlab.mixin.Copyable
             disp(table(obj.user_names, obj.eff_N*100, obj.d_N,...
                 'VariableNames', {'Name', 'Efficiency (%)', 'Dark Count Rate'}))
         end
-        
         %% Utility Methods
         function ind = usrIDX(obj, name)
             if ischar(usr) || (isstring(usr) && numel(usr) == 1)
