@@ -201,7 +201,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
             L = size(alloc_mat,1) - 1; % get number of non null links
             rho_L = zeros([size(rho_K,[1 2]) L]);
             for i = 2:(L+1) % iterate over non-null links
-                if link_fluxes(i) ~= 0
+                if link_fluxes(i) ~= 0 % if link has no flux, leave rho_L = 0 matrix
                     alloc_chans = logical(alloc_mat(i,:));
                     U = U_K(:,:,alloc_chans); % unitaries of channels allocated to link i-1
                     rho = rho_K(:,:,alloc_chans); % initial states of channels allocated to link i-1
@@ -786,7 +786,7 @@ classdef QLAN < handle & matlab.mixin.Copyable
             % performance
             obj.user_fluxes = zeros(obj.N, obj.L);
             obj.R_N = zeros(obj.N, obj.L);
-            obj.link_fluxes = zeros(obj.L, 1);
+            obj.link_fluxes = zeros(obj.L+1, 1);
             obj.A_L = zeros(obj.L, 1);
             obj.C_L = zeros(obj.L, 1);
             obj.lambda_L = zeros(obj.L, 1);
