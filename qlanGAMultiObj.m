@@ -12,9 +12,8 @@ K = numel(chan_fluxes);
 U_K = repmat(eye(D), [1 1 K]);
 rho_K = repmat(rho_psi_m, [1 1 K]);
 
-q = QLAN([], 'arxiv_users.json');
-q.coinc_wind_s = 5e-9;
-q.configChans(chan_fluxes, U_K, rho_K);
+[usrnames, effs, d] = loadUsersFromFile('arxiv_users.json');
+q = QLAN([], effs, d, chan_fluxes, U_K, rho_K, 5e-9,'UserNames', usrnames);
 L = q.L;
 intcon = 1:K;
 %% Optimize
@@ -52,6 +51,7 @@ function pop = boundIntegerCreationFcn(GenomeLength, FitnessFunc, opts)
     end
     
     pop((init_pop_sz+1):end,:) = new_genes;
+    
 end
 
 function kids = boundIntegerXOverFcn(parents, options, nvars, FitnessFcn, unused, currPop)
@@ -67,6 +67,42 @@ function kids = boundIntegerXOverFcn(parents, options, nvars, FitnessFcn, unused
         parent_idx = parent_idx + 1;
         parent2 = currPop(parents(parent_idx),:);
         parent_idx = parent_idx + 1;
+        
+        % Choosing two indices at which to splice parent genes
+        split_idx = randi(nvars-1, [1 2]);
+        while (split_idx(1) == split_idx(2))
+            split_idx = randi(nvars-1, [1 2]);
+        end
+        
+        % Handle case if split indices wrap
+        if split_idx(1) < split_idx(2)
+            left = split_idx(1);
+            right = split_idx(2);
+        else
+            left = split_idx(2);
+            right = split_idx(1);
+            swap = parent1;
+            parent1 = parent2;
+            parent2 = swap;
+        end
+        
+        kids(i,:) = [parent1(1:left), parent2((left+1):right), parent1((right+1):end)];
+    end
+end
+
+function kids = boundIntegerXOverFcn2(parents, options, nvars, FitnessFcn, unused, currPop)
+%%XOVERFUNC: 
+%   parents - vector of indices pointing to parents in currPop
+% Two point crossover; From selected parents, create children from
+% overlapping pairs of parents
+    num_kids = length(parents)-1;
+    kids = zeros(num_kids,nvars);
+    parent_idx = 1;
+    for i = 1:num_kids
+        parent1 = currPop(parents(parent_idx),:);
+        parent_idx = parent_idx + 1;
+        parent2 = currPop(parents(parent_idx),:);
+%         parent_idx = parent_idx + 1;
         
         % Choosing two indices at which to splice parent genes
         split_idx = randi(nvars-1, [1 2]);
@@ -116,14 +152,16 @@ function mutationChildren = boundIntegerMutationFcn(parents,...
     end
 end
 
+
 function fitness = fitnessFunc(alloc, q)
-    alloc = round(alloc);
-    alloc(alloc < 0) = 0;
-    alloc(alloc > q.L) = q.L;
+disp(alloc)
+%     alloc = round(alloc);
+%     alloc(alloc < 0) = 0;
+%     alloc(alloc > q.L) = q.L;
     
     q.evalAlloc(alloc, q.rho_K(:,:,1));
     
     % fitness is average fidelity and average ebit rate
     % Negative as algorithm must maximize values
-    fitness = -min([q.F_L q.ebr_L],[],1);
+    fitness = -min([q.F_L q.ebr_L./q.ebr_Lmax],[],1);
 end
