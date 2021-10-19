@@ -760,18 +760,32 @@ classdef QLAN < handle & matlab.mixin.Copyable
             obj.calcLinkStates();
             obj.calcNoisyLinkStates();
             
-            ref_rho = repmat(ref_rho,1,1,obj.L);
+            % If single reference state provided, duplicate into 3D matrix
+            if size(ref_rho,3) == 1
+                ref_rho = repmat(ref_rho,1,1,obj.L);
+            end
+            
             obj.calcFidelity(ref_rho);
             obj.calcEbitRates();
         end
         
         function evalIsoAlloc(obj, alloc_vect, ref_rho)
+            %EVALISOALLOC evaluates a QLAN given a flux allocation with
+            %respect to a reference state
+            %
+            %   evalIsoAlloc(Q, ALLOC, REFRHO) evaluates the QLAN network
+            %   described by QLAN object Q assuming links are activated one
+            %   at a time. Evaluation metrics are the entangled bit rate
+            %   and fidelity with respect to state REFRHO. ALLOC is an
+            %   integer vector whose elements are link indices. That is,
+            %   ALLOC(n) == 2 implies that channel n's flux is sent to the
+            %   users on link 2,
             valid_alloc = @(x) isvector(x) && numel(x) == obj.K && ... % Vector of K elements
                 max(alloc_vect) <= obj.L && min(alloc_vect) >= 0 && ... % no out of range links
                 ~any(mod(x,1)); % all integers
             
-            valid_refmat = @(x) (isequal(size(ref_rho, [1 2]), size(obj.U_K, [1 2])) &&...
-                size(ref_rho,3) == 1 || size(ref_rho,3) == obj.L);
+            valid_refmat = @(x) isequal(size(ref_rho, [1 2]), size(obj.U_K, [1 2])) &&...
+                (size(ref_rho,3) == 1 || size(ref_rho,3) == obj.L);
             
             if ~valid_alloc(alloc_vect)
                 error('Invalid allocation. Allocation must be vector of integers ranging from 0 to %d', obj.L);
@@ -795,14 +809,19 @@ classdef QLAN < handle & matlab.mixin.Copyable
             obj.rho_L = zeros([size(obj.rho_K, [1 2]) obj.L]);
             obj.sigma_L = zeros([size(obj.rho_K, [1 2]) obj.L]);
             
+            % If single reference state provided, duplicate into 3D matrix
+            if size(ref_rho,3) == 1
+                ref_rho = repmat(ref_rho,1,1,obj.L);
+            end
+            
             obj.alloc_vect = alloc_vect;
             obj.alloc_mat = QLAN.allocVect2Mat(alloc_vect, obj.L);
+            obj.link_fluxes = QLAN.calcLinkFluxes_(obj.alloc_mat, obj.chan_fluxes);
             for i = 1:qtemp.L
                 iso_alloc = alloc_vect;
                 iso_alloc(alloc_vect ~= i) = 0;
                 qtemp.evalAlloc(iso_alloc, ref_rho)
                 
-                obj.link_fluxes(i) = qtemp.link_fluxes(i);
                 obj.user_fluxes(:,i) = qtemp.user_fluxes;
                 obj.R_N(:,i) = qtemp.R_N;
                 obj.A_L(i) = qtemp.A_L(i);
@@ -820,8 +839,8 @@ classdef QLAN < handle & matlab.mixin.Copyable
                 max(alloc_vect) <= obj.L && min(alloc_vect) >= 0 && ... % no out of range links
                 ~any(mod(x,1)); % all integers
             
-            valid_refmat = @(x) (isequal(size(ref_rho, [1 2]), size(obj.U_K, [1 2])) &&...
-                size(ref_rho,3) == 1 || size(ref_rho,3) == obj.L);
+            valid_refmat = @(x) isequal(size(ref_rho, [1 2]), size(obj.U_K, [1 2])) &&...
+                (size(ref_rho,3) == 1 || size(ref_rho,3) == obj.L);
             
             if ~valid_alloc(alloc_vect)
                 error('Invalid allocation. Allocation must be vector of integers ranging from 0 to %d', obj.L);
@@ -851,13 +870,13 @@ classdef QLAN < handle & matlab.mixin.Copyable
             
             obj.alloc_vect = alloc_vect(:);
             obj.alloc_mat = QLAN.allocVect2Mat(alloc_vect, obj.L);
-            nonadj_links = nonAdjLinkSet(obj.links);
+            nonadj_links = nonAdjEdgeSet(obj.links);
             for i = 1:numel(nonadj_links)
                 iso_links = nonadj_links{i}; % Get isoalted links
                 
                 % Constructed isolated allocation
                 iso_alloc = alloc_vect;
-                iso_alloc(all(alloc_vect ~= iso_links', 2)) = 0;
+                iso_alloc(all(alloc_vect(:) ~= iso_links(:).', 2)) = 0;
                 
                 % Evaluate isolated allocation
                 qtemp.evalAlloc(iso_alloc, ref_rho)
