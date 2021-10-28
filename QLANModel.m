@@ -1,20 +1,20 @@
 classdef QLANModel
-    %QLANMODEL encapsulates the symbolic functions defining the experimental
-    %model of a quantum flex-grid local access network
+    %QLANMODEL contains the symbolic functions modelling entanglement
+    %distribution between two users of a QLAN neglecting channel effects
     
     properties (Constant=true)
-        mu = sym('mu',{'positive','real'});
-        etaA = sym('etaA',{'positive','real'});
-        etaB = sym('etaB',{'positive','real'});
-        dA = sym('dA',{'positive','real'});
-        dB = sym('dB',{'positive','real'});
-        tau = sym('tau',{'positive','real'});
-        D = sym('D',{'positive','integer'});
+        sym_mu = sym('mu',{'positive','real'});
+        sym_etaA = sym('etaA',{'positive','real'});
+        sym_etaB = sym('etaB',{'positive','real'});
+        sym_dA = sym('dA',{'positive','real'});
+        sym_dB = sym('dB',{'positive','real'});
+        sym_tau = sym('tau',{'positive','real'});
+        sym_D = sym('D',{'positive','integer'});
         
-        RA  = QLANModel.etaA*QLANModel.mu/2+QLANModel.dA;
-        RB  = QLANModel.etaB*QLANModel.mu/2+QLANModel.dB;
-        A = 8*QLANModel.tau*QLANModel.RA*QLANModel.RB;
-        C = QLANModel.etaA*QLANModel.etaB*QLANModel.mu;
+        RA  = QLANModel.sym_etaA*QLANModel.sym_mu/2+QLANModel.sym_dA;
+        RB  = QLANModel.sym_etaB*QLANModel.sym_mu/2+QLANModel.sym_dB;
+        A = 8*QLANModel.sym_tau*QLANModel.RA*QLANModel.RB;
+        C = QLANModel.sym_etaA*QLANModel.sym_etaB*QLANModel.sym_mu;
         lambda = 1/(1+QLANModel.A/QLANModel.C);
     end
     
@@ -37,21 +37,21 @@ classdef QLANModel
         end
         
         function vars = getParamVars()
-            vars = [QLANModel.etaA,...
-                QLANModel.etaB,...
-                QLANModel.dA,...
-                QLANModel.dB,...
-                QLANModel.tau,...
-                QLANModel.D];
+            vars = [QLANModel.sym_etaA,...
+                QLANModel.sym_etaB,...
+                QLANModel.sym_dA,...
+                QLANModel.sym_dB,...
+                QLANModel.sym_tau,...
+                QLANModel.sym_D];
         end
         
         function F = fidUniformState()
-            F = ((QLANModel.D-1)*QLANModel.lambda+1)/QLANModel.D;
+            F = ((QLANModel.sym_D-1)*QLANModel.lambda+1)/QLANModel.sym_D;
         end
         
         function RE = ebrUniformState()
             RE = (QLANModel.A + QLANModel.C)*...
-                log2(sqrt(QLANModel.D)*QLANModel.fidUniformState());
+                log2(sqrt(QLANModel.sym_D)*QLANModel.fidUniformState());
         end
     end
 end
