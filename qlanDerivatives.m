@@ -1,4 +1,21 @@
-clear
+%% qlanDerivatives.m
+% Uses the symbolic toolbox to calculate QLAN model analytic optima under
+% the following conditions:
+%   1. All channel unitaries are unity
+%   2. Links are isoalted, i.e. cross-talk is disregarded
+%
+% This script calculates:
+%   1. Derivatives of lambda, accidentals A, coincidences C, fidelity F,
+%   and entangled bit rate RE
+%   2. Analytic location and magnitude of the fidelity maximum
+%   3. Numeric location and magnitude of the entangled bit rate maximum
+%
+% Plots generated:
+%   1. Plot of RE vs diff(RE)
+%   2. Fidelity and normalized EBR using detector values from
+%   arxiv_users.json
+
+% clear
 syms u lambda A C D etaA etaB dA dB tau RA RB
 
 [~,eff_N,d_N] = loadUsersFromFile('arxiv_users.json');
@@ -45,23 +62,6 @@ RE_max = eval(subs(RE,[sub_vars 'u'], [sub_vals u_maxRE]));
 % Get analytic form of max Fidelity
 u_maxF = solve(dF == 0, 'ReturnConditions', true);
 F_max = subs(F,'u',u_maxF.u);
-
-%% Validation of QLAN maxFidelity method
-[d, eff] = meshgrid(linspace(1,250,11),logspace(-2,1,15));
-f1 = zeros(size(d)); % evaluated using QLAN method
-f2 = zeros(size(d)); % evaluated using symbolic function
-eta_idx = find(contains(sub_vars, 'etaA'));
-d_idx = find(contains(sub_vars, 'dA'));
-for i = size(d,1)
-    for j = size(d,2)
-        f1(i,j) = QLAN.maxFidelity([eff(i,j) 1], [d(i,j) 100], 5e-9, 4);
-        
-        temp_vals = sub_vals;
-        temp_vals([eta_idx d_idx]) = [eff(i,j) d(i,j)];
-        f2(i,j) = eval(subs(F_max, sub_vars, temp_vals));
-    end
-end
-
 
 %%
 % Getting intersection of fid and normalized ebr

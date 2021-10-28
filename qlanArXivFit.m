@@ -1,3 +1,9 @@
+%% qlanArXivFit.m
+% A script using genetic algorithm to find the 8 channel fluxes necessary
+% to fit the QLAN model to the fidelity,EBR results from the arXiv
+% experiment
+% (https://journals.aps.org/prxquantum/abstract/10.1103/PRXQuantum.2.040304)
+
 profile on
 %% Arxiv values
 % Column index = allocation
@@ -33,7 +39,7 @@ q = QLAN([], eff, d, chan_fluxes, U_K, rho_K, tau, 'UserNames', names);
 %% Optimize
 opts = optimoptions('ga',...
     "PlotFcn", {'gaplotbestf','gaplotbestindiv','gaplotscores'},...
-    "CrossoverFraction",0.2);
+    "CrossoverFraction",0);
 
 % Linear Constraint definition
 % Requiring chan_flux(i) > chan_flux(i+1)
@@ -68,5 +74,5 @@ function f = fitness(chan_fluxes,alloc,q,goal_F,goal_RE)
         RE(:,i) = q.ebr_L;
     end
     
-    f = sum(abs(F-goal_F) + abs(RE-goal_RE), 'all');
+    f = sum(abs(F-goal_F).^2 + 0*abs(RE-goal_RE), 'all');
 end

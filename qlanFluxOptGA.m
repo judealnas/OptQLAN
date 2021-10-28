@@ -23,121 +23,107 @@ q = QLAN([], eta_N, d_N, chan_fluxes, U_K, rho_K, 5e-9, 'UserNames', names);
 
 q.configChans(chan_fluxes, U_K, rho_K);
 L = q.L;
-ub = L*ones(K,1);
-intcon = 1:K;
+
 w = 0.5;
 
 %% Optimize with varying total channel flux
-lb = [zeros(1,K) L*0.5e7];
-ub = [L*ones(1,K) L*2e8];
+% GA parameters
+func = @(x) fitnessFunc(x,q); % optimization objective function
+num_vars = K+1; % number of optimization variables
+intcon = 1:K; % indices of integer optim variables
+lb = [zeros(1,K) 1e6]; % lower bountds
+ub = [L*ones(1,K) Inf]; % Upper bounds
+nonlincon = @(x)nonlinConstr(x,q); % Non-linear constraint function
+opts = optimoptions('ga',...
+    "PlotFcn",{'gaplotbestf','gaplotbestindiv','gaplotscores','gaplotdistance', 'gaplotselection'},...
+    "Display",'iter',...
+    "FunctionTolerance", 1e-12,...
+    "MaxStallGenerations", 100,...
+    "OutputFcn", @gaoutputfunc,...
+    "CrossoverFraction", 0.8);
 
 num_opts = 10;
-solns = cell(num_opts,1);
-fval = zeros(num_opts,1);
-for i = 1:num_opts
-    opts = optimoptions('ga',...
-        "PlotFcn",{'gaplotbestf','gaplotbestindiv','gaplotscores','gaplotdistance', 'gaplotselection'},...
-        "Display",'iter',...
-        "FunctionTolerance", 1e-12,...
-        "MaxStallGenerations", 100,...
-        "OutputFcn", @gaoutputfunc,...
-        "CrossoverFraction", 0.8);
+solns = zeros(num_opts,num_vars);
+fvals = zeros(num_opts,1);
 
+for i = 1:num_opts
     % Optimize to find optimal total channel flux and channel flux distribution
-    [solns{i}, fval(i)] = ...
-        ga(@(x)fitnessFunc(x,q,w),K+1,[],[],[],[],lb,ub,...
-           @(x)nonlinConstr(x,q), 1:K, opts);
+    [solns(i,:), fvals(i)] = ...
+        ga(func,num_vars,[],[],[],[],lb,ub,nonlincon, intcon, opts);
 end
 %% Histogram objective functions and solutions
-figure()
-histogram(fval)
+f_hist = figure();
+[g, grps] = groupcounts(fvals);
+stem(grps,g)
+xticks(grps)
 title("Objective Value Histogram")
 
 % For each solution, count occurences of each link index. Then histogram
 % occurances of each unique link index
-soln_hist_data = zeros(numel(solns), q.L+1);
-for i = 0:q.L
-    for j = 1:numel(solns)
-        soln = solns{j};
-        soln_hist_data(j,i+1) = sum(soln(:) == i);
-    end
+
+
+%% Plotting results
+f_plots = figure();
+ax_plots = axes(f_plots);
+domain = [0 3e8];
+F = QLANModel.fidUniformState();
+RE = QLANModel.ebrUniformState();
+
+% Plotting theory curves for links
+for i = 1:q.L
+    ax_sub = subplot(q.L,1,i);
+    ax_subs(i) = ax_sub;
+    
+    sub_vars = [QLANModel.sym_etaA
+        QLANModel.sym_etaB
+        QLANModel.sym_dA
+        QLANModel.sym_dB
+        QLANModel.sym_tau
+        QLANModel.sym_D];
+    
+    sub_vals = [q.eff_N(q.links(i,:))
+                q.d_N(q.links(i,:))
+                q.coinc_wind_s
+                q.D];
+    
+    hold(ax_sub, 'on')
+    yyaxis(ax_sub ,'left')
+    fplot(subs(F,sub_vars,sub_vals), domain)
+    ylabel('Fidelity')
+    ylim([0 1])
+    yyaxis(ax_sub ,'right')
+    fplot(subs(RE,sub_vars,sub_vals),domain)
+    ylabel('EBR')
+    ylim([0 q.ebr_Lmax(i)])
+    xlabel(sprintf("\\mu_{%d}",i))
+    hold(ax_sub, 'off')
 end
 
-% Plot # of allocated channels per link
-figure()
-hold on
-for i = 1:(q.L+1)
-%     subplot(q.L+1,1,i)
-    plot(allK,soln_hist_data(:,i),'DisplayName',sprintf("Link %d Allocated Channels", i-1))
-end
-title("No. of Allocated Channels")
-xlabel("K")
-ylabel("# of Channels")
-legend
-hold off
 
-%% Comparing optimization solution to model maximums and generating GIF
-symRE = QLANModel.ebrUniformState();
-symF = QLANModel.fidUniformState();
-
-h = figure();
-h.Position(3:4) = [1920/1.5 1080]./2;
-
-for j = 1:numel(solns)
-    q = allQLANS(j);
-    fitnessFunc(solns{j},q,w);
-    clf(h)
-    for i = 1:q.L
-        subplot(q.L,1,i)
-        sub_vals = [reshape(q.eff_N(q.links(i,:)),1,[]),...
-            reshape(q.d_N(q.links(1,:)),1,[]),...
-            q.coinc_wind_s, q.D];
-        symRE_link = subs(symRE, QLANModel.getParamVars(), sub_vals);
-        symF_link = subs(symF, QLANModel.getParamVars(), sub_vals);
-        
-        % Plotting EBR
-        yyaxis right
-        hold off
-        fplot(symRE_link, [0 3e8]); % Plot model curve
-        hold on
-        ylabel('EBR')
-        scatter(q.link_fluxes(i+1), q.ebr_L(i)) % Plot optim solution
-        temp = ylim;
-        ylim([0 q.ebr_Lmax(i)]) % Set lower ylim to 0
-        
-        yyaxis left
-        ylabel('Fidelity')
-        fplot(symF_link, [0 3e8]); % Plot model fidelity curve
-        scatter(q.link_fluxes(i+1), q.F_L(i)) % Plot solution point
-        ylim([0 1])
-        
-        title(sprintf("Link %s",q.link_labels{i}))
-        xlabel(sprintf("\\mu_%d",i))
+% Plotting opt points
+mkrs = 'o+*xsd^v<>ph';
+num_mkrs = numel(mkrs);
+for i = 1:size(solns,1)
+    soln = solns(i,:);
+    fitnessFunc(soln, q); % evaluate fitnessFunc to re-eval QLAN object
+    mkr = mkrs(mod(i,num_mkrs));
     
-        % Add legend beside just the middle graph
-        if true %i == ceil(q.L/2)
-            legend({'Fidelity (Model)', 'Normalized EBR (model)', 'Fidelity (Opt)', 'Normalized EBR (Opt)'}, 'Location', 'bestoutside')
-        end
+    for j = 1:numel(ax_subs)
+        ax = ax_subs(j);
+        mu = q.link_fluxes(j+1);
+        f = q.F_L(j);
+        ebr = q.ebr_L(j);
+        
+        hold(ax,'on')
+        yyaxis(ax,'left')
+        scatter(ax, mu, f, mkr)
+        yyaxis(ax,'right')
+        scatter(ax, mu, ebr, mkr)
+        hold(ax,'off')
     end
-    
-    sgtitle(sprintf("$K=%d$",allK(j)), 'interpreter', 'latex')
-    drawnow
-    
-    % Capturing plot as image
-    frame = getframe(h);
-    im = frame2im(frame);
-    [imind, cm] = rgb2ind(im,256);
-    
-    % Saving frame to GIF
-    if j == 1
-        imwrite(imind, cm, 'koptim.gif', 'gif', 'Loopcount',inf, 'DelayTime',1);
-    else
-        imwrite(imind, cm, 'koptim.gif', 'gif', 'WriteMode', 'append', 'DelayTime',0.5);
-    end
-    
 end
 %% GA functions
-function fitness = fitnessFunc(alloc, q, w)
+function fitness = fitnessFunc(alloc, q)
 tot_flux = alloc(end);
 K = q.K;
 chan_fluxes = tot_flux.*ones(K,1)./K;
