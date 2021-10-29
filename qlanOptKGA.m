@@ -18,14 +18,14 @@ rho_K = repmat(rho_psi_m, [1 1 K]);
 
 [names, eta_N, d_N] = loadUsersFromFile('arxiv_users.json');
 
+% Add a user
+names = [names(:);'Dave'];
+eta_N = [eta_N(:); 0.001];
+d_N = [d_N(:); 200];
+
 q = QLAN([], eta_N, d_N, chan_fluxes, U_K, rho_K, 5e-9, 'UserNames', names);
 
 q.configChans(chan_fluxes, U_K, rho_K);
-L = q.L;
-ub = L*ones(K,1);
-intcon = 1:K;
-w = 0.5;
-
 %% Optimize with Varying K
 allK = 1:25;
 allQLANS = [];
@@ -47,22 +47,28 @@ for i = 1:num_opts
     k = allK(i);
     fprintf("Using %d channels", k);
     
-    % Ensure enough flux to reach optimal solution
-    chan_fluxes = q.L*max(q.mu_L_ebrmax,[],'all').*ones(k,1)./k;
-
-    % Double available flux to emulate resource surplus
-    chan_fluxes = 2.*chan_fluxes;
-    
+    % Reconfiguring QLAN object for current number of channels
+    chan_fluxes = ones(k,1)./k; % Real channel fluxes assigned in fitness func
     U_K = repmat(eye(D), [1 1 k]);
     rho_K = repmat(rho_psi_m, [1 1 k]);
-    
     q.configChans(chan_fluxes, U_K, rho_K);
     
-    allQLANS = [allQLANS copy(q)];
+    % GA settings
+    num_vars = k+1; % optimize k allocations and total flux
+    intcon = 1:k; % First k variables are integer allocations
+    lb = [zeros(1,k) min(q.mu_L_ebrmax,[],'all')];
+    ub = [q.L.*ones(1,k) 3*q.L*max(q.mu_L_ebrmax,[],'all')];
+    func = @(x)fitnessFunc(x,q);
+    nonlinconstr = [];%@(x)nonlinConstr(x,q);
     
-    [solns{i}, fval(i), exit, output, pop, scores] = ...
-        ga(@(x)fitnessFunc(x,q,w),k,[],[],[],[],zeros(1,k),L*ones(1,k),...
-           @(x)nonlinConstr(x,q), 1:k, opts);
+    % Actual optimization
+    [solns{i}, fval(i)] = ...
+        ga(func,num_vars,[],[],[],[],lb,ub,nonlinconstr, intcon, opts);
+   
+    % After optimization, put QLAN object in state with best found
+    % allocation and save copy to an array
+    fitnessFunc(solns{i},q);
+    allQLANS = [allQLANS copy(q)];
 end
 %% Histogram objective functions and solutions
 figure()
@@ -101,7 +107,7 @@ h.Position(3:4) = [1920/1.5 1080]./2;
 
 for j = 1:numel(solns)
     q = allQLANS(j);
-    fitnessFunc(solns{j},q,w);
+    fitnessFunc(solns{j},q);
     clf(h)
     for i = 1:q.L
         subplot(q.L,1,i)
@@ -153,12 +159,20 @@ for j = 1:numel(solns)
     
 end
 %% GA functions
-function fitness = fitnessFunc(alloc, q, w)
+function fitness = fitnessFunc(alloc, q)
+
+% Re-configure QLAN object channel fluxes
+tot_flux = alloc(end);
+alloc = alloc(1:end-1);
+K = q.K;
+new_chans = tot_flux.*ones(K,1)./K;
+q.configChans(new_chans, q.U_K, q.rho_K);
+
+% Evaluate
 q.evalIsoAlloc(alloc, q.rho_K(:,:,1));
 
-fid = q.F_L;
+% Calcuate fitness
 ebr_norm = q.ebr_L./q.ebr_Lmax;
-f = q.ebr_L;
 fitness = sum(abs(ebr_norm - 1));
 end
 
@@ -166,7 +180,7 @@ function [c, ceq] = nonlinConstr(alloc,q)
 % Enforces the constraint that each link flux be less than or equal to
 % the link flux of maximum EBR. This is because both EBR and fidelity
 % decrease monotonically for fluxes larger than the flux of maximum EBR
-alloc_mat = QLAN.allocVect2Mat(alloc,q.L);
+alloc_mat = QLAN.allocVect2Mat(alloc(1:end-1),q.L);
 link_fluxes = QLAN.calcLinkFluxes_(alloc_mat, q.chan_fluxes);
 c = link_fluxes(2:end) - q.mu_L_ebrmax;
 ceq = [];
