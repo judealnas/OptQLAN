@@ -54,5 +54,18 @@ classdef QLANModel
                 log2(sqrt(QLANModel.sym_D)*QLANModel.fidUniformState());
         end
     end
+    
+    methods
+        function testMethod(obj, arg1, arg2)
+            narginchk(1,3)
+            if nargin == 1 && isa(obj,'QLANModel')
+                disp('Good')
+                arg1 = 9;
+                arg2 = 0;
+            end
+            
+            disp(arg1 + arg2);
+        end
+    end
 end
 
