@@ -61,7 +61,7 @@ for i = 1:num_opts
     allQLANS = [allQLANS copy(q)];
     
     [solns{i}, fval(i), exit, output, pop, scores] = ...
-        ga(@(x)fitnessFunc(x,q,w),k,[],[],[],[],zeros(1,k),L*ones(1,k),...
+        ga(@(x)fitnessFunc(x,q),k,[],[],[],[],zeros(1,k),L*ones(1,k),...
            @(x)nonlinConstr(x,q), 1:k, opts);
 end
 %% Histogram objective functions and solutions
@@ -101,7 +101,7 @@ h.Position(3:4) = [1920/1.5 1080]./2;
 
 for j = 1:numel(solns)
     q = allQLANS(j);
-    fitnessFunc(solns{j},q,w);
+    fitnessFunc(solns{j},q);
     clf(h)
     for i = 1:q.L
         subplot(q.L,1,i)
@@ -153,12 +153,10 @@ for j = 1:numel(solns)
     
 end
 %% GA functions
-function fitness = fitnessFunc(alloc, q, w)
-q.evalIsoAlloc(alloc, q.rho_K(:,:,1));
+function fitness = fitnessFunc(alloc, q)
+q.evalAlloc(alloc, q.rho_K(:,:,1),'EvalMode',QLAN.EVALMODE_ISO);
 
-fid = q.F_L;
 ebr_norm = q.ebr_L./q.ebr_Lmax;
-f = q.ebr_L;
 fitness = sum(abs(ebr_norm - 1));
 end
 
@@ -167,7 +165,7 @@ function [c, ceq] = nonlinConstr(alloc,q)
 % the link flux of maximum EBR. This is because both EBR and fidelity
 % decrease monotonically for fluxes larger than the flux of maximum EBR
 alloc_mat = QLAN.allocVect2Mat(alloc,q.L);
-link_fluxes = QLAN.calcLinkFluxes_(alloc_mat, q.chan_fluxes);
+link_fluxes = q.calcLinkFluxes(alloc_mat, q.chan_fluxes);
 c = link_fluxes(2:end) - q.mu_L_ebrmax;
 ceq = [];
 end

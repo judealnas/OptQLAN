@@ -1,11 +1,11 @@
 function sigma_L = calcNoisyLinkStates(Q, noise_L, rho_L, lambda_L)
 %CALCNOISYLINKSTATES calculates the link states after inclusion of noise.
 %
-%   sigma_L = calcNoisyLinkStates(Q, RHO, NOISE, LAMBDA) returns
+%   sigma_L = calcNoisyLinkStates(Q, NOISE, RHO, LAMBDA) returns
 %   the sum of the corresponding RHO's and NOISE's weighted by
 %   the corresponding LAMBDA and 1-LAMBDA respectively
-%       RHO - DxDxL 3D matrix of link states
 %       NOISE - DxDxL 3D matrix of noise states
+%       RHO - DxDxL 3D matrix of link states
 %       LAMBDA - Lx1 vector of weights
 %       sigma_L - DxDxL 3D matrix of noisy link states
 %           sigma_L(:,:,l) =

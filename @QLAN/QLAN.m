@@ -61,184 +61,18 @@ classdef QLAN < handle & matlab.mixin.Copyable
         ebr_L; % Per link ebit rates
         ebr_Lmax; % Max possible entangled bit rates
         mu_L_ebrmax; % Link fluxes for max EBR
-        
+        eval_mode; % evaluation method chosen for current state
     end
     
     properties (Constant)
-        sym_vars = {'mu', 'etaA', 'etaB', 'dA', 'dB', 'tau', 'D'};
+        EVALMODE_ISO = 'iso';
+        EVALMODE_SIMULT = 'simult';
+        EVALMODE_BATCH = 'batch';
     end
+    
     %% Static Methods
     methods (Static=true)
         M = allocVect2Mat(V,L)
-        
-
-        
-        function func = getFuncFid()
-            persistent sym_fid
-            if isempty(sym_fid)
-                vars = sym(QLAN.sym_vars);
-                
-                mu = vars(1);
-                etaA = vars(2);
-                etaB = vars(3);
-                dA = vars(4);
-                dB = vars(5);
-                tau = vars(6);
-                D = vars(7);
-                
-                RA = etaA*mu/2+dA;
-                RB = etaB*mu/2+dB;
-                A = 8*tau*RA*RB;
-                C = etaA*etaB*mu;
-                lambda = 1/(1+A/C);
-                sym_fid = ((D-1)*lambda+1)/D;
-            end
-            func = sym_fid;
-        end
-        function func = getFuncEBR()
-            %GETFUNCEBR is a static accessor method to a persistent
-            %variable containing the symbolic function for entangled bit
-            %rate assuming isolated links, channel unitaries of identity,
-            %and identical initial channel states
-            persistent sym_ebr
-            if isempty(sym_ebr)
-                vars = sym(QLAN.sym_vars);
-                
-                mu = vars(1);
-                etaA = vars(2);
-                etaB = vars(3);
-                dA = vars(4);
-                dB = vars(5);
-                tau = vars(6);
-                D = vars(7);
-                
-                RA = etaA*mu/2+dA;
-                RB = etaB*mu/2+dB;
-                A = 8*tau*RA*RB;
-                C = etaA*etaB*mu;
-                lambda = 1/(1+A/C);
-                F = ((D-1)*lambda+1)/D;
-                sym_ebr = (A+C)*log2(sqrt(D)*F);
-            end
-            func = sym_ebr;
-        end
-        
-        function func = getFuncDiffEBR()
-            %GETFUNCDiffEBR is a static accessor method to a persistent
-            %variable containing the derivative with respect to isolated
-            %link flux of the entangled bit rate assuming channel unitaries
-            %of identity and identical initial channel states
-            persistent sym_debr
-            if isempty(sym_debr)
-                sym_debr = diff(QLAN.getFuncEBR(),sym('mu'));
-            end
-            func = sym_debr;
-        end
-        
-        function [Fmax, mu_max] = maxFidelity(eff, d, tau, dim)
-            %MAXFIDELITY calculates the maximum theoretical fidelity of
-            %two-user links.
-            %
-            %   FMAX = maxFidelity(EFF,D,TAU,DIM) returns the Lx1 vector FMAX of
-            %   maximum link fidelities given the Lx2 matrices EFF and D.
-            %   Each row of EFF contains the efficiences of users
-            %   constituting a link. Each row of D contains the
-            %   corresponding dark count rates. TAU is a numeric scalar
-            %   representing the coincidence window in seconds. DIM is the
-            %   dimension of the combined quantum system.
-            %
-            %   [FMAX MUMAX] = maxFidelity(EFF,D,TAU,DIM) also returns the isolated
-            %   link flux necessary to achieve the max fidelity.
-            
-            % Input checking
-            if size(eff) ~= size(d)
-                error("Efficiency and dark count matrices must have identical dimensions")
-            end
-            if ~(isscalar(tau) && isnumeric(tau))
-                error("Coincidence window must be a numeric scalar");
-            end
-            
-            if dim < 2 || mod(dim,1) ~= 0
-                error("DIM must be an integer greater than 1")
-            end
-            
-            % Input parsing
-            dA = d(:,1);
-            dB = d(:,2);
-            etaA = eff(:,1);
-            etaB = eff(:,2);
-            
-            % max mu calculation
-            mu_max = 2*sqrt(dA.*dB./(etaA.*etaB));
-            
-            % max fidelity calculation
-            A = dA.*dB;
-            B = sqrt(dA.*dB.*etaA.*etaB);
-            C = dA./etaA + dB./etaB;
-            num = A + B.*(C + dim/(8*tau));
-            denom = A + B.*(C+1/(8*tau));
-            Fmax = num./denom./dim;
-            Fmax(isnan(Fmax)) = 1;
-        end
-        
-        function [EBRmax, mumax] = maxEBR(eff, d, tau, dim)
-            %MAXEBR calculates the maximum theoretical fidelity of
-            %two-user links.
-            %
-            %   EMAX = maxEBR(EFF,D,TAU,DIM) returns the Lx1 vector EMAX of
-            %   maximum link entangled bit rates given the Lx2 matrices EFF
-            %   and D. Each row of EFF contains the efficiences of users
-            %   constituting a link. Each row of D contains the
-            %   corresponding dark count rates. TAU is a numeric scalar
-            %   representing the coincidence window in seconds. DIM is the
-            %   dimension of the combined quantum system.
-            %
-            %   [EMAX MUMAX] = maxEBR(EFF,D,TAU,DIM) also returns the
-            %   isolated link flux necessary to achieve the max entangled
-            %   bit rate.
-            
-            % Input checking
-            if ~isequal(size(eff),size(d))
-                error("Efficiency and dark count matrices must have identical dimensions")
-            end
-            if ~(isscalar(tau) && isnumeric(tau))
-                error("Coincidence window must be a numeric scalar");
-            end
-            
-            if dim < 2 || mod(dim,1) ~= 0
-                error("DIM must be an integer greater than 1")
-            end
-            
-            % Get number of links
-            L = size(eff,1);
-            
-            % Initializer output variables
-            EBRmax = zeros(L,1);
-            mumax = zeros(L,1);
-            
-            % Iterate over links, evaluating max values
-            for i = 1:L
-                % Build substitution array; MUST CORRELATE WITH
-                % QLAN.sym_vars
-                sub_vals = [eff(i,:) d(i,:) tau dim];
-                
-                EBR_func = subs(QLAN.getFuncEBR(), QLAN.sym_vars(2:end), sub_vals);
-                dEBR_func = diff(EBR_func,sym(QLAN.sym_vars{1}));
-                
-                % EBR is known to be quadratic, so one critical point
-                % exists in the domain of positive flux. First find the
-                % roots of EBR. Use mid-point of roots as starting point of
-                % vpasolve()
-                
-                % Find unique semi-positive roots of EBR to help vpasolve()
-                roots_RE = eval(solve(EBR_func == 0));
-                roots_RE = unique(roots_RE(roots_RE >= 0));
-                
-                % Find critical point of dEBR between roots
-                mumax(i) = vpasolve(dEBR_func == 0, sym(QLAN.sym_vars{1}), mean(roots_RE));
-                EBRmax(i) = eval(subs(EBR_func, sym(QLAN.sym_vars{1}), mumax(i)));
-            end
-        end
         
         function obj = saveUsersToFile(obj, filename)
             saveUsersToFile(filename, obj.eff_N, obj.d_N, obj.user_names);
@@ -343,8 +177,18 @@ classdef QLAN < handle & matlab.mixin.Copyable
             end
             
             % Calculating theoretical maxima
-            [obj.F_Lmax, obj.mu_L_Fmax] = QLAN.maxFidelity(eff_N(links), d_N(links), coinc_wind_s, size(chan_states,1));
-            [obj.ebr_Lmax, obj.mu_L_ebrmax] = QLAN.maxEBR(eff_N(links), d_N(links), coinc_wind_s, size(chan_states,1));
+            usr_noise_params = obj.coinc_wind_s.*obj.d_N./obj.eff_N;
+            for i = 1:obj.L
+                usrs = obj.links(i,:);
+                model = QLANLinkModel(usr_noise_params(usrs),obj.D);
+                
+                [obj.F_Lmax, xF] = model.fidelityMaximum();
+                obj.mu_L_Fmax = xF./obj.coinc_wind_s;
+                
+                [ebrmax, xE] = model.EBRMaximum();
+                obj.ebr_Lmax = prod(obj.eff_N(usrs))/obj.coinc_wind_s*ebrmax;
+                obj.mu_L_ebrmax = xE./obj.coinc_wind_s;
+            end
         end
         
         function obj = configChans(obj, chan_fluxes, chan_unitaries, chan_states)
@@ -453,244 +297,19 @@ classdef QLAN < handle & matlab.mixin.Copyable
         end
         
         %% Metric Calculation Methods
-        function link_fluxes = calcLinkFluxes(obj)
-            link_fluxes = obj.calcLinkFluxes_(obj.alloc_mat, obj.chan_fluxes);
-            obj.link_fluxes = link_fluxes;
-        end
-        
-        function user_fluxes = calcUserFluxes(obj)
-            user_fluxes = obj.calcUserFluxes_(full(obj.inc_mat),obj.link_fluxes);
-            obj.user_fluxes = user_fluxes;
-        end
-        
-        function R_N = calcUserSingleRate(obj)
-            R_N = obj.calcUserSingleRate_(obj.user_fluxes, obj.eff_N, obj.d_N);
-            obj.R_N = R_N;
-        end
-        
-        function A_L = calcLinkAccRate(obj)
-            A_L = obj.calcLinkAccRate_(full(obj.inc_mat), obj.R_N, obj.coinc_wind_s);
-            obj.A_L = A_L;
-        end
-        
-        function C_L = calcLinkCorrRate(obj)
-            C_L = obj.calcLinkCorrRate_(obj.inc_mat, obj.link_fluxes, obj.eff_N);
-            obj.C_L = C_L;
-        end
-        
-        function lambda_L = calcStateWeights(obj)
-            lambda_L = obj.calcStateWeights_(obj.A_L, obj.C_L);
-            obj.lambda_L = lambda_L;
-        end
-        
-        function rho_L = calcLinkStates(obj)
-            rho_L = obj.calcLinkStates_(obj.alloc_mat, obj.link_fluxes,...
-                obj.chan_fluxes, obj.U_K, obj.rho_K);
-            obj.rho_L = rho_L;
-        end
-        
-        function sigma_L = calcNoisyLinkStates(obj)
-            D = size(obj.rho_L,1);
-            n = size(obj.rho_L,3);
-            noise_L = repmat(eye(D)./D, 1,1,n);
-            
-            sigma_L = obj.calcNoisyLinkStates_(obj.rho_L, noise_L, obj.lambda_L);
-            obj.sigma_L = sigma_L;
-        end
-        
-        function F_L = calcFidelity(obj, psi)
-            F_L = obj.calcFidelity_(obj.sigma_L, psi);
-            obj.F_L = F_L;
-        end
-        
-        function ebr_L = calcEbitRates(obj)
-            logneg_L = zeros(obj.L,1);
-            for i = 1:obj.L
-                logneg_L(i) = logneg(obj.sigma_L(:,:,i));
-            end
-            
-            ebr_L = obj.calcEbitRate_(obj.A_L, obj.C_L, obj.sigma_L);
-            obj.ebr_L = ebr_L;
-        end
-        
-        function evalAlloc(obj, alloc_vect, ref_rho)
-            %EVALALLOC returns QLAN performance metrics given a spectrum
-            %allocation
-            %
-            %   [FID, EBR] = evalAlloc(QLAN, ALLOC_VECT, RHO) returns the
-            %   link state fidelities FID with respect to state RHO as well
-            %   as the link entangled bit rates EBR given a spectrum
-            %   allocation ALLOC_VECT. RHO must have the same dimensions as
-            %   the channel unitaries U_k and initial channel states rho_k.
-            %   ALLOC_VECT is a Kx1 vector of link indices l where K is the
-            %   number of channel pairs and 0 <= l <= L, the number of
-            %   links.
-            
-            valid_alloc = @(x) isvector(x) && numel(x) == obj.K && ... % Vector of K elements
-                max(alloc_vect) <= obj.L && min(alloc_vect) >= 0 && ... % no out of range links
-                ~any(mod(x,1)); % all integers
-            
-            valid_refmat = @(x) (isequal(size(ref_rho, [1 2]), size(obj.U_K, [1 2])) &&...
-                size(ref_rho,3) == 1 || size(ref_rho,3) == obj.L);
-            
-            if ~valid_alloc(alloc_vect)
-                error('Invalid allocation. Allocation must be vector of integers ranging from 0 to %d', obj.L);
-            end
-            if ~valid_refmat(ref_rho)
-                error("Reference density matrix incompatible with channel unitaries. Reference matrix must be 1 or %d pages of %d-by-%d matrices.", obj.L, size(obj.U_K,1), size(obj.U_K,2));
-            end
-            
-            obj.alloc_vect = alloc_vect(:);
-            obj.alloc_mat = QLAN.allocVect2Mat(alloc_vect, obj.L);
-            obj.calcLinkFluxes();
-            obj.calcUserFluxes();
-            obj.calcUserSingleRate();
-            obj.calcLinkAccRate();
-            obj.calcLinkCorrRate();
-            obj.calcStateWeights();
-            obj.calcLinkStates();
-            obj.calcNoisyLinkStates();
-            
-            % If single reference state provided, duplicate into 3D matrix
-            if size(ref_rho,3) == 1
-                ref_rho = repmat(ref_rho,1,1,obj.L);
-            end
-            
-            obj.calcFidelity(ref_rho);
-            obj.calcEbitRates();
-        end
-        
-        function evalIsoAlloc(obj, alloc_vect, ref_rho)
-            %EVALISOALLOC evaluates a QLAN given a flux allocation with
-            %respect to a reference state
-            %
-            %   evalIsoAlloc(Q, ALLOC, REFRHO) evaluates the QLAN network
-            %   described by QLAN object Q assuming links are activated one
-            %   at a time. Evaluation metrics are the entangled bit rate
-            %   and fidelity with respect to state REFRHO. ALLOC is an
-            %   integer vector whose elements are link indices. That is,
-            %   ALLOC(n) == 2 implies that channel n's flux is sent to the
-            %   users on link 2,
-            valid_alloc = @(x) isvector(x) && numel(x) == obj.K && ... % Vector of K elements
-                max(alloc_vect) <= obj.L && min(alloc_vect) >= 0 && ... % no out of range links
-                ~any(mod(x,1)); % all integers
-            
-            valid_refmat = @(x) isequal(size(ref_rho, [1 2]), size(obj.U_K, [1 2])) &&...
-                (size(ref_rho,3) == 1 || size(ref_rho,3) == obj.L);
-            
-            if ~valid_alloc(alloc_vect)
-                error('Invalid allocation. Allocation must be vector of integers ranging from 0 to %d', obj.L);
-            end
-            if ~valid_refmat(ref_rho)
-                error("Reference density matrix incompatible with channel unitaries. Reference matrix must be 1 or %d pages of %d-by-%d matrices.", obj.L, size(obj.U_K,1), size(obj.U_K,2));
-            end
-            
-            qtemp = copy(obj);
-            
-            % Preallocated matrices to hold evaluation and improve
-            % performance
-            obj.user_fluxes = zeros(obj.N, obj.L);
-            obj.R_N = zeros(obj.N, obj.L);
-            obj.link_fluxes = zeros(obj.L+1, 1);
-            obj.A_L = zeros(obj.L, 1);
-            obj.C_L = zeros(obj.L, 1);
-            obj.lambda_L = zeros(obj.L, 1);
-            obj.F_L = zeros(obj.L, 1);
-            obj.ebr_L = zeros(obj.L, 1);
-            obj.rho_L = zeros([size(obj.rho_K, [1 2]) obj.L]);
-            obj.sigma_L = zeros([size(obj.rho_K, [1 2]) obj.L]);
-            
-            % If single reference state provided, duplicate into 3D matrix
-            if size(ref_rho,3) == 1
-                ref_rho = repmat(ref_rho,1,1,obj.L);
-            end
-            
-            obj.alloc_vect = alloc_vect;
-            obj.alloc_mat = QLAN.allocVect2Mat(alloc_vect, obj.L);
-            obj.link_fluxes = QLAN.calcLinkFluxes_(obj.alloc_mat, obj.chan_fluxes);
-            for i = 1:qtemp.L
-                iso_alloc = alloc_vect;
-                iso_alloc(alloc_vect ~= i) = 0;
-                qtemp.evalAlloc(iso_alloc, ref_rho)
-                
-                obj.user_fluxes(:,i) = qtemp.user_fluxes;
-                obj.R_N(:,i) = qtemp.R_N;
-                obj.A_L(i) = qtemp.A_L(i);
-                obj.C_L(i) = qtemp.C_L(i);
-                obj.lambda_L(i) = qtemp.lambda_L(i);
-                obj.rho_L(:,:,i) = qtemp.rho_L(:,:,i);
-                obj.sigma_L(:,:,i) = qtemp.sigma_L(:,:,i);
-                obj.F_L(i) = qtemp.F_L(i);
-                obj.ebr_L(i) = qtemp.ebr_L(i);
-            end
-        end
-        
-        function evalBatchIsoAlloc(obj, alloc_vect, ref_rho)
-            valid_alloc = @(x) isvector(x) && numel(x) == obj.K && ... % Vector of K elements
-                max(alloc_vect) <= obj.L && min(alloc_vect) >= 0 && ... % no out of range links
-                ~any(mod(x,1)); % all integers
-            
-            valid_refmat = @(x) isequal(size(ref_rho, [1 2]), size(obj.U_K, [1 2])) &&...
-                (size(ref_rho,3) == 1 || size(ref_rho,3) == obj.L);
-            
-            if ~valid_alloc(alloc_vect)
-                error('Invalid allocation. Allocation must be vector of integers ranging from 0 to %d', obj.L);
-            end
-            if ~valid_refmat(ref_rho)
-                error("Reference density matrix incompatible with channel unitaries. Reference matrix must be 1 or %d pages of %d-by-%d matrices.", obj.L, size(obj.U_K,1), size(obj.U_K,2));
-            end
-            
-            % To accelerate isoalted link evaluation, sets of non-adjacent
-            % links are generated. Non-adjacent links are those that do not
-            % share users. The links in each set are evaluated. The valid
-            % user and link quantities are indexed and stored.
-            qtemp = copy(obj); % QLAN copy used for evaluation
-            
-            % Preallocated matrices to hold evaluation and improve
-            % performance
-            obj.user_fluxes = zeros(obj.N, obj.L);
-            obj.R_N = zeros(obj.N, obj.L);
-            obj.link_fluxes = zeros(obj.L, 1);
-            obj.A_L = zeros(obj.L, 1);
-            obj.C_L = zeros(obj.L, 1);
-            obj.lambda_L = zeros(obj.L, 1);
-            obj.F_L = zeros(obj.L, 1);
-            obj.ebr_L = zeros(obj.L, 1);
-            obj.rho_L = zeros([size(obj.rho_K, [1 2]) obj.L]);
-            obj.sigma_L = zeros([size(obj.rho_K, [1 2]) obj.L]);
-            
-            obj.alloc_vect = alloc_vect(:);
-            obj.alloc_mat = QLAN.allocVect2Mat(alloc_vect, obj.L);
-            nonadj_links = nonAdjEdgeSet(obj.links);
-            for i = 1:numel(nonadj_links)
-                iso_links = nonadj_links{i}; % Get isoalted links
-                
-                % Constructed isolated allocation
-                iso_alloc = alloc_vect;
-                iso_alloc(all(alloc_vect(:) ~= iso_links(:).', 2)) = 0;
-                
-                % Evaluate isolated allocation
-                qtemp.evalAlloc(iso_alloc, ref_rho)
-                
-                % User quantities stored in NxL matrix
-                for j = 1:numel(iso_links)
-                    curr_link = iso_links(j);
-                    user_idx = obj.links(curr_link,:);
-                    obj.user_fluxes(user_idx,curr_link) = qtemp.user_fluxes(user_idx);
-                    obj.R_N(user_idx,curr_link) = qtemp.R_N(user_idx);
-                end
-                
-                % Storing link quantities
-                obj.link_fluxes(iso_links) = qtemp.link_fluxes(iso_links);
-                obj.A_L(iso_links) = qtemp.A_L(iso_links);
-                obj.C_L(iso_links) = qtemp.C_L(iso_links);
-                obj.lambda_L(iso_links) = qtemp.lambda_L(iso_links);
-                obj.rho_L(:,:,iso_links) = qtemp.rho_L(:,:,iso_links);
-                obj.sigma_L(:,:,iso_links) = qtemp.sigma_L(:,:,iso_links);
-                obj.F_L(iso_links) = qtemp.F_L(iso_links);
-                obj.ebr_L(iso_links) = qtemp.ebr_L(iso_links);
-            end
-        end
+        % Signatures of methods in other files
+        link_fluxes = calcLinkFluxes(obj, alloc_mat, chan_fluxes)        
+        user_fluxes = calcUserFluxes(obj, inc_mat, link_fluxes)
+        R_N = calcUserSingleRate(obj, user_fluxes, eff_N, d_N)
+        A_L = calcLinkAccRate(obj, inc_mat, R_N, coinc_wind_s)
+        C_L = calcLinkCorrRate(obj, inc_mat, link_fluxes, eff_N)
+        lambda_L = calcStateWeights(obj, A_L, C_L)
+        rho_L = calcLinkStates(obj, alloc_mat, link_fluxes, chan_fluxes,...
+            U_K, rho_K)
+        sigma_L = calcNoisyLinkStates(obj, noise_L, rho_L, lambda_L)
+        F_L = calcFidelity(obj, rho_L, psi_L)
+        ebr_L = calcEbitRate(obj, A_L, C_L, sigma_L)
+        evalAlloc(obj, alloc_vect, ref_rho, varargin)
         %% Plotting/Display Methods
         function plotGraph(obj)
             edgetable = table(obj.links, obj.link_labels,...

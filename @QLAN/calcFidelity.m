@@ -1,7 +1,7 @@
-function F_L = calcFidelity(Q, rho_L, psi_L)
+function F_L = calcFidelity(Q, psi_L, rho_L)
 %CALCFIDELITY calculates the fidelities between pages of provided states
 %
-%   F_L = calcFidelity(Q,RHO, PSI) returns a vector of
+%   F_L = calcFidelity(Q, PSI, RHO) returns a vector of
 %   fidelities between the corresponding matrices of the 3D
 %   matrices RHO and PSI. RHO and PSI must have the same size
 %   third dimension (i.e. same number of pages)

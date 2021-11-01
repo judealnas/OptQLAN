@@ -11,7 +11,7 @@ function link_fluxes = calcLinkFluxes(Q, alloc_mat, chan_fluxes)
 %   ALLOC_MAT and CHAN_FLUX stored wihtin Q
 %
 % Note that inputs and outputs of this method are NOT stored within Q
-
+narginchk(1,3);
 if nargin == 1 && isa(Q,'QLAN')
     alloc_mat = Q.alloc_mat;
     chan_fluxes = Q.chan_fluxes;

@@ -30,7 +30,7 @@ if nargin == 1 && isa(Q,'QLAN')
     link_fluxes = Q.link_fluxes;
     chan_fluxes = Q.chan_fluxes;
     U_K = Q.U_K;
-    rho_K = q.rho_K;
+    rho_K = Q.rho_K;
 end
 L = size(alloc_mat,1) - 1; % get number of non null links
 rho_L = zeros([size(rho_K,[1 2]) L]);
