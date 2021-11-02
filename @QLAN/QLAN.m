@@ -25,11 +25,11 @@ classdef QLAN < handle & matlab.mixin.Copyable
         user_names (:,1); % network user labels
         link_labels (:,1); % link names
         inc_mat (:,:) logical; % Network incidence matrix in sparse format
-        eff_N (:,1); % Col vector of user detector efficiencies
-        d_N (:,1);
+        eff_N (:,1); % Vector of user detector efficiencies
+        d_N (:,1); % Vector of user detector dark count ratess
         U_K; % DxDxK matrix of channel unitaries
         rho_K; % DxDxK matrix of initial channel states
-        chan_fluxes (:,1);
+        chan_fluxes (:,1);% Kx1 vector of channel fluxes
     end
     
     %% Dependent properties
@@ -50,24 +50,24 @@ classdef QLAN < handle & matlab.mixin.Copyable
         link_fluxes; % (L+1)x1 vector of link biphoton fluxes
         user_fluxes; % Nx1 vector of user single photon fluxes
         R_N; % Nx1 vector of single photon rates per detector per user
-        A_L; % Accidental coincidence rate per link
-        C_L; % Correlated coincidence rate per link
-        lambda_L; % weight between entangled and noise states
+        A_L (:,1); % Accidental coincidence rate per link
+        C_L (:,1); % Correlated coincidence rate per link
+        lambda_L (:,1); % weight between entangled and noise states
         rho_L; % link states prior to adding noise
         sigma_L; % link states after weighting and noise addition
-        F_L; % Per link fidelities
-        F_Lmax; % Max possible link fidelities
-        mu_L_Fmax; % Link fluxes for max fidelity
-        ebr_L; % Per link ebit rates
-        ebr_Lmax; % Max possible entangled bit rates
-        mu_L_ebrmax; % Link fluxes for max EBR
+        F_L (:,1); % Per link fidelities
+        F_Lmax (:,1); % Max possible link fidelities
+        mu_L_Fmax (:,1); % Link fluxes for max fidelity
+        ebr_L (:,1); % Per link ebit rates
+        ebr_Lmax (:,1); % Max possible entangled bit rates
+        mu_L_ebrmax (:,1); % Link fluxes for max EBR
         eval_mode; % evaluation method chosen for current state
     end
     
     properties (Constant)
-        EVALMODE_ISO = 'iso';
-        EVALMODE_SIMULT = 'simult';
-        EVALMODE_BATCH = 'batch';
+        EVALMODE_ISO = 'iso'; % Isolated link evaluation mode
+        EVALMODE_SIMULT = 'simult'; % Simultaneous link evaluation mode
+        EVALMODE_BATCH = 'batch'; % Batch isolated linke evaluation mode
     end
     
     %% Static Methods
@@ -182,12 +182,12 @@ classdef QLAN < handle & matlab.mixin.Copyable
                 usrs = obj.links(i,:);
                 model = QLANLinkModel(usr_noise_params(usrs),obj.D);
                 
-                [obj.F_Lmax, xF] = model.fidelityMaximum();
-                obj.mu_L_Fmax = xF./obj.coinc_wind_s;
+                [obj.F_Lmax(i), xF] = model.fidelityMaximum();
+                obj.mu_L_Fmax(i) = xF./obj.coinc_wind_s;
                 
                 [ebrmax, xE] = model.EBRMaximum();
-                obj.ebr_Lmax = prod(obj.eff_N(usrs))/obj.coinc_wind_s*ebrmax;
-                obj.mu_L_ebrmax = xE./obj.coinc_wind_s;
+                obj.ebr_Lmax(i) = prod(obj.eff_N(usrs))/obj.coinc_wind_s*ebrmax;
+                obj.mu_L_ebrmax(i) = xE./obj.coinc_wind_s;
             end
         end
         
