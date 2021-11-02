@@ -128,11 +128,9 @@ tot_flux = alloc(end);
 K = q.K;
 chan_fluxes = tot_flux.*ones(K,1)./K;
 q.configChans(chan_fluxes,q.U_K,q.rho_K);
-q.evalIsoAlloc(alloc(1:end-1), q.rho_K(:,:,1));
+q.evalAlloc(alloc(1:end-1), q.rho_K(:,:,1),QLAN.EVALMODE_ISO);
 
-fid = q.F_L;
 ebr_norm = q.ebr_L./q.ebr_Lmax;
-f = q.ebr_L;
 fitness = sum(abs(ebr_norm - 1));
 end
 

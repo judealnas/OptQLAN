@@ -33,7 +33,6 @@ q.configChans(chan_fluxes, U_K, rho_K);
 L = q.L;
 ub = L*ones(K,1);
 intcon = 1:K;
-w = 0.5;
 %% Optimize Several Times
 num_opts = 100;
 solns = cell(num_opts,1);
@@ -48,7 +47,7 @@ opts = optimoptions('ga',...
 
 for i = 1:num_opts
     [solns{i}, fval(i), exit, output, pop, scores] = ...
-        ga(@(x)fitnessFunc(x,q,w),K,[],[],[],[],zeros(1,K),L*ones(1,K), @(x)nonlinConstr(x,q), intcon, opts);
+        ga(@(x)fitnessFunc(x,q),K,[],[],[],[],zeros(1,K),L*ones(1,K), @(x)nonlinConstr(x,q), intcon, opts);
 end
 
 mean_fval = mean(fval);
@@ -120,12 +119,10 @@ for i = 1:q.L
 end
 
 %% GA functions
-function fitness = fitnessFunc(alloc, q, w)
-    q.evalIsoAlloc(alloc, q.rho_K(:,:,1));
+function fitness = fitnessFunc(alloc, q)
+    q.evalAlloc(alloc, q.rho_K(:,:,1),QLAN.EVALMODE_ISO);
     
-    fid = q.F_L;
     ebr_norm = q.ebr_L./q.ebr_Lmax;
-    f = q.ebr_L;
     fitness = sum(abs((ebr_norm - 1)));
 end
 

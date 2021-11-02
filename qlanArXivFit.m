@@ -3,8 +3,6 @@
 % to fit the QLAN model to the fidelity,EBR results from the arXiv
 % experiment
 % (https://journals.aps.org/prxquantum/abstract/10.1103/PRXQuantum.2.040304)
-
-profile on
 %% Arxiv values
 % Column index = allocation
 Arxiv_alloc = [1 3
@@ -58,7 +56,7 @@ end
         opts); 
 %%
 fitness(soln, Arxiv_alloc,q,Arxiv_F,Arxiv_RE);
-q.evalIsoAlloc(Arxiv_alloc(:,1),rho_K(:,:,1));
+q.evalAlloc(Arxiv_alloc(:,1),rho_K(:,:,1),QLAN.EVALMODE_ISO);
 [q.F_L Arxiv_F(:,1)]
 [q.ebr_L Arxiv_RE(:,1)]
 %% GA Fitness function
@@ -69,7 +67,7 @@ function f = fitness(chan_fluxes,alloc,q,goal_F,goal_RE)
     RE = zeros(size(goal_RE));
     
     for i = 1:size(alloc,2)
-        q.evalIsoAlloc(alloc(:,i),q.rho_K(:,:,1));
+        q.evalAlloc(alloc(:,i),q.rho_K(:,:,1),QLAN.EVALMODE_ISO);
         F(:,i) = q.F_L;
         RE(:,i) = q.ebr_L;
     end
