@@ -1,6 +1,5 @@
 function M = allocVect2Mat(V,L)
-%ALLOCVECT2MAT converts an allocation vector to an allocation
-%matrix
+%ALLOCVECT2MAT Converts an allocation vector to an allocation matrix
 %
 %   M = allocVect2Mat(V,L) converts allocation vector V to
 %   allocation matrix M given L non-null links. Each row of M

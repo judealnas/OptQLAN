@@ -1,6 +1,5 @@
 function ebr_L = calcEbitRate(Q, A_L, C_L, sigma_L)
-%CALCEBITRATE calculates the entangled
-%bit rate over a network link
+%CALCEBITRATE Calculates the entangled bit rate over network links
 %
 %   ebr_L = calcEbitRate(Q, A_L, C_L, SIGMA_L) calculates the
 %   link entangled bit rate using the link coincidence rates

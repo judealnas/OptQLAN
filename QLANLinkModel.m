@@ -2,13 +2,13 @@ classdef QLANLinkModel
     %QLANLINKMODEL encapsulates the dimensionless equations modelling an
     %ideal, one-link network. Channel unitaries are assumed identity.
     %
-    %   model = QLANLinkModel(Y_VECT,D) returns a link model object.
+    %   model = QLANLinkModel(Y_VECT,D) Returns a link model object.
     %       Y_VECT - a two-element vector containing the noise parameters
     %               of the link endpoint users. A user's noise parameter is
     %               defined as: y = (coincidence window)*(dark count
     %               rate)/(efficiency)
     %       D - dimension of the quantum system shared across the link; if
-    %       unprovided, defaults to 4, the size of a two-qubit system
+    %           unprovided, defaults to 4, the size of a two-qubit system
     %
     % -----------------------------------------------------------------
     %   Static Properties:
@@ -38,14 +38,17 @@ classdef QLANLinkModel
     %       will have a maximum EBR of 0, i.e. no communication possible.
     
     properties
-        y (1,2) double;
-        D = 4;
+        y (1,2) double; % Vector of user noise parameters
+        D = 4; % Dimension of shared link state
     end
     
     properties (Constant)
+        % Fidelity as a function of normalized flux x, noise parameters yA and yB, and shared state dimension D
         general_fidelity_func = @(x,yA,yB,D)1/D*...
-            (1+(D-1).*x./(x.^2+2.*(yA+yB+0.5).*x+4*yA.*yB))
+            (1+(D-1).*x./(x.^2+2.*(yA+yB+0.5).*x+4*yA.*yB)) 
         
+        % Entangled bit rate as a function of normalized flux x, noise parameters yA and yB, and shared state dimension D
+
         general_scaledEBR_func = @(x,yA,yB,D)(x.^2+2.*(yA+yB+0.5).*x+4*yA.*yB).*...
             log2(sqrt(D).*QLANLinkModel.general_fidelity_func(x,yA,yB,D))
         
@@ -66,7 +69,7 @@ classdef QLANLinkModel
     methods
         function obj = QLANLinkModel(y,D)
             narginchk(1,2);
-            if numel(y) ~= 2 || any(y<0)
+            if (numel(y) ~= 2) || any(y<0)
                 error("y must be a two-element vector of non-negative real numbers")
             end
             
@@ -81,7 +84,7 @@ classdef QLANLinkModel
         end
         
         function func = boundNZEBR(obj)
-            %%BOUNDNZEBR returns a function handle for the boundary line
+            %%BOUNDNZEBR Returns a function handle for the boundary line
             %%marking where the maximum EBR is 0.
             %
             %   func = boundNZEBR(obj) returns a function handle for the
@@ -91,7 +94,7 @@ classdef QLANLinkModel
             func = @(y)obj.general_bound_nzEBR(y,obj.D);
         end
         function func = fidelityFunc(obj)
-            %FIDELITYFUNC returns a function handle calculating link state
+            %FIDELITYFUNC Returns a function handle calculating link state
             %fidelity
             %
             %   func = fidelityFunc(obj) returns a function handle for link
@@ -101,7 +104,7 @@ classdef QLANLinkModel
         end
         
         function func = scaledEBRFunc(obj)
-            %%SCALEDEBRFUNC returns a function handle for the scaled EBR.
+            %%SCALEDEBRFUNC Returns a function handle for the scaled EBR.
             %
             %   func = scaledEBRFunc(OBJ) returns a function handle for the
             %   scaled EBR with the noise parameters YA, YB and dimension D
@@ -110,7 +113,7 @@ classdef QLANLinkModel
         end
         
         function func = scaledDiffEBRFunc(obj)
-            %%SCALEDEBRFUNC returns a function handle for the derivative of
+            %%SCALEDEBRFUNC Returns a function handle for the derivative of
             %%the scaled EBR with resepct to normalized flux
             %
             %   func = scaledEBRFunc(OBJ) returns a function handle for the
@@ -121,7 +124,7 @@ classdef QLANLinkModel
         end
         
         function [Fmax, xFmax] = fidelityMaximum(obj)
-            %%FIDELITYMAXIMUM calculates the maximum possible fidelity of a
+            %%FIDELITYMAXIMUM Calculates the maximum possible fidelity of a
             %%link and the flux required to achieve that fidelity
             %
             %   Fmax = fidelityMaximum(OBJ) returns the maximum fidelity
