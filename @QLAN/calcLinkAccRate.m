@@ -28,6 +28,6 @@ A_L = zeros(L, 1);
 full_inc_mat = logical(full(inc_mat));
 for i = 1:L
     A_L(i) = ...
-        8*coinc_wind_s.*prod(R_N(full_inc_mat(:,i)));
+        4*coinc_wind_s.*prod(R_N(full_inc_mat(:,i)));
 end
 end
