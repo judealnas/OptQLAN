@@ -91,8 +91,8 @@ plane_xRE_str = compose("%.3fy_A+%.3fy_B+%.3f",plane_xRE_coeff(:).');
 %% Fitting circle to boundary curve
 Ycol = Y(:);
 boundcol = bound_line(:);
-circ_coeff = [Ycol.^2 Ycol ones(numel(Y),1)]\[boundcol.^2 boundcol]
-%% Plotting REmax surface, plane fit, and yA == yB line truncating when < 0
+circ_coeff = [Ycol.^2 Ycol ones(numel(Y),1)]\[boundcol.^2 boundcol];
+%% Plotting REmax surface, and yA == yB line truncating when < 0
 fig_REmax = figure('Name','Max EBR');
 clf(fig_REmax)
 ax_REmax = axes(fig_REmax);
@@ -105,7 +105,7 @@ x_line = YA(YA==YB & REmax);
 line_coeff = polyfit(x_line, y_line,1);
 
 % Plot maximum RE
-surf(ax_REmax,Y,Y,REmax,'EdgeAlpha',0)
+surf(ax_REmax,YA,YB,REmax,'EdgeAlpha',0)
 hold(ax_REmax, 'on')
 
 % Plot linear fit

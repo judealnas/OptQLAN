@@ -147,9 +147,8 @@ classdef QLANLinkModel
             %   EBR possible for a link described by the noise
             %   parameters and dimension size contained in OBJ
             %
-            %   [Fmax, xFmax] = fidelityMaximum(obj) also returns the
-            %   normalized link flux requried to achieve the maximum
-            %   rate
+            %   [scaledEBRmax, xEBRmax] = EBRMaximum(OBJ) also returns the
+            %   normalized link flux requried to achieve the maximum rate
             %
             % Scaled EBR can be converted to true EBR via:
             %       (true EBR) = (scaled EBR)*(tau)/(etaA*etaB)
@@ -166,7 +165,8 @@ classdef QLANLinkModel
                 return
             end
             
-            % Otherwise, find
+            % Otherwise, find magnitude and location of maxima for positive
+            % x
             ebr_func = obj.scaledEBRFunc();
             [xEBRmax, scaledEBRmax] = fminbnd(@(x)-ebr_func(x),0,2);
             scaledEBRmax = abs(scaledEBRmax);

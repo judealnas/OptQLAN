@@ -1,12 +1,15 @@
 classdef QLAN < handle & matlab.mixin.Copyable
     %QLAN Representation of flex-grid quantum LAN
-    %   Q = QLAN(LINKS, FILEPATH) retrieves an array of users from the
-    %   JSON-encoded file FILEPATH. LINKS is an Lx2 numeric matrix where
-    %   each row contains the indices of users forming a network link.
-    %
-    %   Q = QLAN(LINKS, EFF_N, D_N) constructs the network using the
-    %   corresponding arrays of user efficiencies EFF_N and detector dark
-    %   count rates D_N.
+    %   Q = QLAN(LINKS, EFF_N, D_N, MU_K, U_K, RHO_K, TAU) constructs a
+    %   QLAN object where:
+    %       LINKS - Lx2 matrix of user indices. Each row represents a
+    %               desired entanglement link
+    %       EFF_N - Nx1 vector of user detector efficiencies as decimals
+    %       D_N - Nx1 vector of user detector dark count rates
+    %       MU_K - Kx1 vector of channel biphoton fluxes
+    %       U_K - DxDxK 3D matrix of channel unitary matrices
+    %       RHO_K - DxDxK 3D matrix of each channel's initial state
+    %       TAU - scalar coincidence window in seconds
     %
     %   Q = QLAN(_,'UserNames', UNAMES) associates names with users of the
     %   network where NAMES is a string vector or cell array of character
