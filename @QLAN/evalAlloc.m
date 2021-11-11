@@ -53,11 +53,8 @@ if size(ref_rho,3) == 1
     ref_rho = repmat(ref_rho,1,1,Q.L);
 end
 
-% Persistent noise variable
-persistent noise_L
-if isempty(noise_L)
-    noise_L = repmat(eye(Q.D)./Q.D,[1 1 Q.L]);
-end
+%  noise variable
+noise_L = repmat(eye(Q.D)./Q.D,[1 1 Q.L]);
 
 % Save evaluation mode
 Q.eval_mode = mode;
