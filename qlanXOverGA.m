@@ -60,7 +60,7 @@ end
 
 %% GA functions
 function fitness = fitnessFunc(alloc, q)
-    q.evalIsoAlloc(alloc, q.rho_K(:,:,1));
+    q.evalAlloc(alloc, q.rho_K(:,:,1), QLAN.EVALMODE_ISO);
     ebr_norm = q.ebr_L./q.ebr_Lmax;
     fitness = sum(abs((ebr_norm - 1)));
 end
@@ -70,7 +70,7 @@ function [c, ceq] = nonlinConstr(alloc,q)
     % the link flux of maximum EBR. This is because both EBR and fidelity
     % decrease monotonically for fluxes larger than the flux of maximum EBR
     alloc_mat = QLAN.allocVect2Mat(alloc,q.L);
-    link_fluxes = QLAN.calcLinkFluxes_(alloc_mat, q.chan_fluxes);
+    link_fluxes = QLAN.calcLinkFluxes(alloc_mat, q.chan_fluxes);
     c = link_fluxes(2:end) - q.mu_L_ebrmax;
     ceq = [];
 end

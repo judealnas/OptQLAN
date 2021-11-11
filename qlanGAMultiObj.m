@@ -154,12 +154,8 @@ end
 
 
 function fitness = fitnessFunc(alloc, q)
-disp(alloc)
-%     alloc = round(alloc);
-%     alloc(alloc < 0) = 0;
-%     alloc(alloc > q.L) = q.L;
     
-    q.evalAlloc(alloc, q.rho_K(:,:,1));
+    q.evalAlloc(alloc, q.rho_K(:,:,1),QLAN.EVALMODE_ISO);
     
     % fitness is average fidelity and average ebit rate
     % Negative as algorithm must maximize values
