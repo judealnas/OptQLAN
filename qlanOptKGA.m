@@ -1,4 +1,14 @@
-%% QLAN Optimization
+%% qlanOptKGA.m
+% This script uses the genetic algorithm to optimize a QLAN network. In
+% addition to the integer allocation vector, the total channel flux is
+% included as a continuous-valued optimization parameter. The channel flux
+% distribution is uniform throughout the optimization. 
+%
+% The total channel number K is swept and a number of GA optimizations are
+% run for each K, keeping the best solution.
+%
+% The objective value, # of channels allocated to each link, and the total
+% channel flux are plotted against the # of channels K
 try
     close('Genetic Algorithm')
     close all
