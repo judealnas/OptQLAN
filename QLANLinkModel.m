@@ -22,14 +22,14 @@ classdef QLANLinkModel
     %       equation:
     %               x = (coincidence window)*(biphoton flux)
     %
-    %   QLANLinkModel.general_scaledEBR_func - returns a function handle
+    %   QLANLinkModel.general_dimlessEBR_func - returns a function handle
     %       with signature
-    %           scaledEBR(x,yA,yB,D)
-    %       which calculates the scaled EBR of a link receiving normalized
+    %           dimlessEBR(x,yA,yB,D)
+    %       which calculates the dimensionless EBR of a link receiving normalized
     %       flux of x with user noise parameters yA,yB and system dimension
-    %       D. The scaled EBR can be converted to units of ebits/s by the
+    %       D. The dimensionless EBR can be converted to units of ebits/s by the
     %       following equation:
-    %           EBR = [etaA*etaB/tau^2]*scaledEBR
+    %           EBR = [etaA*etaB/tau^2]*dimlessEBR
     %       where etaN is the efficiency of user N and tau is the
     %       coincidence window in seconds
     %
@@ -49,10 +49,10 @@ classdef QLANLinkModel
         
         % Entangled bit rate as a function of normalized flux x, noise parameters yA and yB, and shared state dimension D
 
-        general_scaledEBR_func = @(x,yA,yB,D)(x.^2+2.*(yA+yB+0.5).*x+4*yA.*yB).*...
+        general_dimlessEBR_func = @(x,yA,yB,D)(x.^2+2.*(yA+yB+0.5).*x+4*yA.*yB).*...
             log2(sqrt(D).*QLANLinkModel.general_fidelity_func(x,yA,yB,D))
         
-        general_DscaledEBr_func = @(x,yA,yB,D)...
+        general_DdimlessEBr_func = @(x,yA,yB,D)...
             (2*(x+yA+yB)+1)*...
             log2(sqrt(D).*QLANLinkModel.general_fidelity_func(x,yA,yB,D))+...
             (D-1).*(4*yA.*yB-x.^2)./(log(2).*(x.^2+(2*(yA+yB)+D).*x+4*yA.*yB))
@@ -103,24 +103,24 @@ classdef QLANLinkModel
             func = @(x)obj.general_fidelity_func(x,obj.y(1),obj.y(2),obj.D);
         end
         
-        function func = scaledEBRFunc(obj)
-            %%SCALEDEBRFUNC Returns a function handle for the scaled EBR.
+        function func = dimlessEBRFunc(obj)
+            %%DIMLESSEBRFUNC Returns a function handle for the dimensionless EBR.
             %
-            %   func = scaledEBRFunc(OBJ) returns a function handle for the
-            %   scaled EBR with the noise parameters YA, YB and dimension D
+            %   func = dimlessEBRFunc(OBJ) returns a function handle for the
+            %   dimensionless EBR with the noise parameters YA, YB and dimension D
             %   substitued in.
-            func = @(x)obj.general_scaledEBR_func(x,obj.y(1),obj.y(2),obj.D);
+            func = @(x)obj.general_dimlessEBR_func(x,obj.y(1),obj.y(2),obj.D);
         end
         
-        function func = scaledDiffEBRFunc(obj)
-            %%SCALEDEBRFUNC Returns a function handle for the derivative of
-            %%the scaled EBR with resepct to normalized flux
+        function func = dimlessDiffEBRFunc(obj)
+            %%DIMLESSEBRFUNC Returns a function handle for the derivative of
+            %%the dimensionless EBR with resepct to normalized flux
             %
-            %   func = scaledEBRFunc(OBJ) returns a function handle for the
-            %   derivative with respect to normalized flux of scaled EBR
+            %   func = dimlessEBRFunc(OBJ) returns a function handle for the
+            %   derivative with respect to normalized flux of dimensionless EBR
             %   with the noise parameters YA, YB and dimension D substitued
             %   in.
-            func = @(x)obj.general_DscaledEBr_func(x,obj.y(1),obj.y(2),obj.D);
+            func = @(x)obj.general_DdimlessEBr_func(x,obj.y(1),obj.y(2),obj.D);
         end
         
         function [Fmax, xFmax] = fidelityMaximum(obj)
@@ -139,19 +139,19 @@ classdef QLANLinkModel
             xFmax = 2*sqrt(prod(obj.y));
         end
         
-        function [scaledEBRmax, xEBRmax] = EBRMaximum(obj)
-            %%EBRMAXIMUM calculates the maximum possible scaled entangled
+        function [dimlessEBRmax, xEBRmax] = EBRMaximum(obj)
+            %%EBRMAXIMUM calculates the maximum possible dimensionless entangled
             %%bit rate of a link and the flux required to achieve that rate
             %
-            %   scaledEBRmax = EBRMaximum(OBJ) returns the maximum scaled
+            %   dimlessEBRmax = EBRMaximum(OBJ) returns the maximum dimensionless
             %   EBR possible for a link described by the noise
             %   parameters and dimension size contained in OBJ
             %
-            %   [scaledEBRmax, xEBRmax] = EBRMaximum(OBJ) also returns the
+            %   [dimlessEBRmax, xEBRmax] = EBRMaximum(OBJ) also returns the
             %   normalized link flux requried to achieve the maximum rate
             %
-            % Scaled EBR can be converted to true EBR via:
-            %       (true EBR) = (scaled EBR)*(tau)/(etaA*etaB)
+            % dimensionless EBR can be converted to true EBR via:
+            %       (true EBR) = (dimless EBR)*(tau)/(etaA*etaB)
             % where tau is the coincidence window and the etaN's are the
             % user detector efficiencies.
             yA = obj.y(1);
@@ -160,16 +160,16 @@ classdef QLANLinkModel
             % Check if non-zero EBR is possible; immediately return 0 if
             % not
             if ~obj.isEBRnz(yA,yB,obj.D)
-                scaledEBRmax = 0;
+                dimlessEBRmax = 0;
                 xEBRmax = NaN;
                 return
             end
             
             % Otherwise, find magnitude and location of maxima for positive
             % x
-            ebr_func = obj.scaledEBRFunc();
-            [xEBRmax, scaledEBRmax] = fminbnd(@(x)-ebr_func(x),0,2);
-            scaledEBRmax = abs(scaledEBRmax);
+            ebr_func = obj.dimlessEBRFunc();
+            [xEBRmax, dimlessEBRmax] = fminbnd(@(x)-ebr_func(x),0,2);
+            dimlessEBRmax = abs(dimlessEBRmax);
         end
     end
 end
