@@ -40,8 +40,8 @@ mean_std_str = compose("R_{Emax}=%.2f\\pm%.2E",[ebrmax_mean(:) ebrmax_std(:)]);
 
 fig_max = figure(1);
 plot3(yAs, yBs, ebrmaxes);
-xlabel("y_A")
-ylabel("y_B")
+xlabel("$y_A$")
+ylabel("$y_B$")
 legend(compose('Q=%.2f ; %s',[num2cell(Cs(:)),mean_std_str]),'Location','best','Interpreter','tex');
 view(0,90)
 title("$\mathcal{R}_{Emax}$",'Interpreter','latex')
