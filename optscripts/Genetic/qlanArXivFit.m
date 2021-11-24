@@ -3,6 +3,9 @@
 % to fit the QLAN model to the fidelity,EBR results from the arXiv
 % experiment
 % (https://journals.aps.org/prxquantum/abstract/10.1103/PRXQuantum.2.040304)
+addpath('../..')
+addpath('../../utils')
+add
 %% Arxiv values
 % Column index = allocation
 Arxiv_alloc = [1 3

@@ -6,6 +6,9 @@ try
 catch
 end
 clear
+files = genpath('../..')
+files = 
+addpath(genpath('../..'))
 %% Network Parameters
 psi_m = [0;1;-1;0]/sqrt(2);
 rho_psi_m = psi_m*psi_m';

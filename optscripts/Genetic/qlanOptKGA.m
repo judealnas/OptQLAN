@@ -15,6 +15,7 @@ try
 catch
 end
 clear
+addpath('../../')
 %% Network Parameters
 psi_m = [0;1;-1;0]/sqrt(2);
 rho_psi_m = psi_m*psi_m';
