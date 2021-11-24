@@ -2,19 +2,36 @@ function saveUsersToFile(filename, eff_N, d_N, names)
 %SAVEUSERSTOFILE Save user information to text file in human-readable JSON
 %format
 %
-%  filename = File to write; pre-existing contents will be overwritten
-%  eff_N = array of user detector efficiencies
-%  d_N = array of user dark count rates
-%  names = [OPTIONAL] string array of user names; if not provided, default
-%          names of style "nx" with integer x is used
+%  saveUsersToFile(FILE, EFF, DARKRATE, NAMES) writes to FILE in JSON
+%  format the users described by the EFF, DARKRATE, and optional NAMES
+%  vectors.
+%       EFF - Nx1 vector of detector efficiencies between 0 and 1
+%       DARKRATE - Nx1 vector of detector dark count rates
+%       NAMES - vector of char arrays or string vector of user names
+
+narginchk(3,4);
 
 % get number of users
 N = min([numel(eff_N), numel(d_N)]);
+if numel(eff_N) ~= numel(d_N)
+    warning('Mismatched number of efficiencies and dark count rates. Ignoring some values')
+end
 
 % If names not provided, generate names
+% Else check if enough names passed and pad if not
 if nargin == 3
-    names = arrayfun(@(x) sprintf("n%d", x), 1:N);
+    names = arrayfun(@(x) sprintf('n%d', x), 1:N);
+else
+    names = cellstr(names);
+    num_names = numel(names);
+    
+    % Add extra names if not enough passed
+    if num_names < N
+        warning('Insufficient number of names passed. Generating additional names...')
+        names = [names(:);compose('n%d',((num_names+1):N).')];
+    end
 end
+    
 
 % construct user struct array
 user_arr = [];
